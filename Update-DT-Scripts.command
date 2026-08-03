@@ -1,8 +1,4 @@
 #!/bin/bash
-# Downloads the full DT InDesign scripts kit into Scripts Panel / Actual Scripts.
-# Public mirror: https://github.com/xamartinsa/design-terminal-indesign-scripts
-# Source of truth: git sandbox/scripts/Indesign - *
-
 set -euo pipefail
 BASE_URL="${DT_SCRIPTS_BASE_URL:-https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main}"
 BASE_URL="${BASE_URL%/}"
@@ -14,7 +10,7 @@ echo "Downloading manifest: $BASE_URL/manifest.json"
 curl -fsSL "$BASE_URL/manifest.json" -o "$TMP/manifest.json"
 
 python3 - <<'PY' "$TMP/manifest.json" "$BASE_URL" "$TMP"
-import hashlib, json, os, shutil, sys, urllib.request
+import hashlib, json, shutil, sys, urllib.request
 from pathlib import Path
 
 manifest_path, base_url, tmp = sys.argv[1:4]
@@ -28,9 +24,9 @@ panels = sorted(root.rglob("Scripts Panel"), key=lambda p: str(p), reverse=True)
 if not panels:
     raise SystemExit(f"Scripts Panel not found under {root}")
 panel = panels[0]
-subdir = m.get("panelSubdir") or "Actual Scripts"
+subdir = m.get("panelSubdir") or "DT Scripts GitHub Auto"
 target = panel / subdir
-archive = target / "Archive"
+archive = target / "_old"
 target.mkdir(parents=True, exist_ok=True)
 archive.mkdir(parents=True, exist_ok=True)
 print(f"Target: {target}")
@@ -52,7 +48,8 @@ for f in m["files"]:
             shutil.move(str(old), str(archive / old.name))
     shutil.copy2(dl, target / name)
 
-print(f"\nDone. Installed {len(m['files'])} scripts.")
+print(f"\nDone. Installed {len(m['files'])} scripts into '{subdir}'.")
+print("Other Scripts Panel folders were not changed.")
 print("Restart InDesign if the Scripts panel looks stale.")
 PY
 

@@ -21,9 +21,9 @@ try {
     throw "Scripts Panel folder not found under $indesignRoot. Open InDesign once, then retry."
   }
   $panel = $panels | Sort-Object FullName -Descending | Select-Object -First 1
-  $subdir = if ($m.panelSubdir) { [string]$m.panelSubdir } else { 'Actual Scripts' }
+  $subdir = if ($m.panelSubdir) { [string]$m.panelSubdir } else { 'DT Scripts GitHub Auto' }
   $target = Join-Path $panel.FullName $subdir
-  $archive = Join-Path $target 'Archive'
+  $archive = Join-Path $target '_old'
   New-Item -ItemType Directory -Path $target -Force | Out-Null
   New-Item -ItemType Directory -Path $archive -Force | Out-Null
   Write-Host "Target: $target"
@@ -42,11 +42,16 @@ try {
     Get-ChildItem -LiteralPath $target -Filter ($f.id + '-*.jsx') -File -ErrorAction SilentlyContinue |
       Where-Object { $_.Name -ne $f.name } |
       ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination (Join-Path $archive $_.Name) -Force }
+    # Same fixed name without version suffix (e.g. ImageEmbeddedSyncer.jsx / TerminalBelarusPreparator.jsx)
+    if (Test-Path -LiteralPath $dest) {
+      # overwrite in place
+    }
     Copy-Item -LiteralPath $dl -Destination $dest -Force
   }
 
   Write-Host ""
-  Write-Host ("Done. Installed {0} scripts." -f $m.files.Count)
+  Write-Host ("Done. Installed {0} scripts into '{1}'." -f $m.files.Count, $subdir)
+  Write-Host 'Other Scripts Panel folders were not changed.'
   Write-Host 'Restart InDesign if the Scripts panel looks stale.'
 }
 finally {

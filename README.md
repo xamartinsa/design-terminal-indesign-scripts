@@ -1,30 +1,31 @@
-# DT InDesign Scripts (public kit)
+# DT InDesign Scripts
 
-Current InDesign scripts for the Design Terminal layout team (Scripts Panel).
+Скрипты для InDesign Scripts Panel.
 
-**Source of truth** — private sandbox (scripts/Indesign - *).  
-This repo is a **public mirror** for Gena (Mac) and Serezha (Windows).
+Обновление: запусти Update-DT-Scripts.bat (Windows) или Update-DT-Scripts.command (macOS).
+Файлы ставятся в отдельную папку **DT Scripts GitHub Auto** — другие скрипты не трогает.
 
-Drafts are OK in public: teammates update only when Martin asks.
+В наборе:
+- TerminalPreparator
+- LegalParagraphSetup
+- ImageCroper
+- ImageLinkSyncer
+- SaveAsInddAndIdml
+- TerminalBelarusPreparator
 
 ---
 
-Актуальные InDesign-скрипты команды Design Terminal для Scripts Panel.
+# DT InDesign Scripts
 
-**Канон** — приватный sandbox (scripts/Indesign - *).  
-Этот репозиторий — **публичное зеркало** для Гены (Mac) и Сережи (Win).
+Scripts for the InDesign Scripts Panel.
 
-В паблик можно пушить и сырое: коллеги обновляются только по просьбе Мартина.
+Update: run Update-DT-Scripts.bat (Windows) or Update-DT-Scripts.command (macOS).
+Files go into a separate folder **DT Scripts GitHub Auto** — other scripts are left alone.
 
-## Install / Update · Установка / обновление
-
-1. Download once / скачай один раз:
-   - Windows: [Update-DT-Scripts.bat](./Update-DT-Scripts.bat)
-   - macOS: [Update-DT-Scripts.command](./Update-DT-Scripts.command)
-2. Double-click / запусти двойным кликом — installs the **full kit** into Scripts Panel / Actual Scripts.
-
-Raw base: https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main
-
-## Contents · Содержимое
-
-See manifest.json and the kit/ folder.
+Included:
+- TerminalPreparator
+- LegalParagraphSetup
+- ImageCroper
+- ImageLinkSyncer
+- SaveAsInddAndIdml
+- TerminalBelarusPreparator

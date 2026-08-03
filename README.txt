@@ -1,10 +1,31 @@
-﻿DT InDesign Scripts Kit
-=======================
-РСЃС‚РѕС‡РЅРёРє: git sandbox/scripts/Indesign - *
-Р—РµСЂРєР°Р»Рѕ РґР»СЏ РєРѕР»Р»РµРі: https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main
+# DT InDesign Scripts
 
-Windows: Р·Р°РїСѓСЃС‚РёС‚СЊ Update-DT-Scripts.bat
-macOS:   Р·Р°РїСѓСЃС‚РёС‚СЊ Update-DT-Scripts.command
+Скрипты для InDesign Scripts Panel.
 
-РЎРєСЂРёРїС‚С‹ СЃС‚Р°РІСЏС‚СЃСЏ РІ InDesign Scripts Panel / Actual Scripts (РІРµСЃСЊ РЅР°Р±РѕСЂ РїРµСЂРµР·Р°РїРёСЃС‹РІР°РµС‚СЃСЏ).
-РћР±РЅРѕРІР»РµРЅРѕ (UTC): 2026-08-03T15:42:07Z
+Обновление: запусти Update-DT-Scripts.bat (Windows) или Update-DT-Scripts.command (macOS).
+Файлы ставятся в отдельную папку **DT Scripts GitHub Auto** — другие скрипты не трогает.
+
+В наборе:
+- TerminalPreparator
+- LegalParagraphSetup
+- ImageCroper
+- ImageLinkSyncer
+- SaveAsInddAndIdml
+- TerminalBelarusPreparator
+
+---
+
+# DT InDesign Scripts
+
+Scripts for the InDesign Scripts Panel.
+
+Update: run Update-DT-Scripts.bat (Windows) or Update-DT-Scripts.command (macOS).
+Files go into a separate folder **DT Scripts GitHub Auto** — other scripts are left alone.
+
+Included:
+- TerminalPreparator
+- LegalParagraphSetup
+- ImageCroper
+- ImageLinkSyncer
+- SaveAsInddAndIdml
+- TerminalBelarusPreparator
