@@ -1,0 +1,85 @@
+﻿{
+    "updatedAt":  "2026-08-03T15:34:50Z",
+    "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
+    "panelSubdir":  "Actual Scripts",
+    "files":  [
+                  {
+                      "id":  "TerminalPreparator",
+                      "name":  "TerminalPreparator-1.36.jsx",
+                      "version":  "1.36",
+                      "sha256":  "b218581ff8e91816d99f43610f3e1fdb3fb13371a576d08b82a4c1b6575b5d94"
+                  },
+                  {
+                      "id":  "AutoFontSizeGrep",
+                      "name":  "AutoFontSizeGrep-2.25.jsx",
+                      "version":  "2.25",
+                      "sha256":  "f4b5fad7b45c58af1adf2bfb093899bc1c119da4d2fc3d200fe6ce0cd9200605"
+                  },
+                  {
+                      "id":  "LegalParagraphSetup",
+                      "name":  "LegalParagraphSetup-1.9.jsx",
+                      "version":  "1.9",
+                      "sha256":  "472a17f124981a7fe8529455f1710e47c0dae768afc76ecee56ac034d2a3b10a"
+                  },
+                  {
+                      "id":  "BasicParagraphSetup",
+                      "name":  "BasicParagraphSetup-1.0.jsx",
+                      "version":  "1.0",
+                      "sha256":  "df1a33b39fb711333f7297b3675d4cce27a91573af0cabd1487dd0305f2ef481"
+                  },
+                  {
+                      "id":  "CharacterStylesSetup",
+                      "name":  "CharacterStylesSetup-1.0.jsx",
+                      "version":  "1.0",
+                      "sha256":  "06821fc2bee778473ce2e4af1ded643af641dd4c6d8c2d60081acea3887c57f8"
+                  },
+                  {
+                      "id":  "ImageCroper",
+                      "name":  "ImageCroper-5.2.jsx",
+                      "version":  "5.2",
+                      "sha256":  "f07d182d0bb33bda9a6d295467a55137692b6f8906040dc5ad01062bab879b0e"
+                  },
+                  {
+                      "id":  "ImageLinkSyncer",
+                      "name":  "ImageLinkSyncer-1.0.jsx",
+                      "version":  "1.0",
+                      "sha256":  "bbc2573f0ce75e01b10f86f64702c5a84f4e311b15cf7b490c1cd62b24af1780"
+                  },
+                  {
+                      "id":  "ImageEmbeddedSyncer",
+                      "name":  "ImageEmbeddedSyncer.jsx",
+                      "version":  "1.0",
+                      "sha256":  "725863bffac3732fb39984ae5709f95c0affcb52a16c1ac38ea9fed068d4eb2b"
+                  },
+                  {
+                      "id":  "SaveAsInddAndIdml",
+                      "name":  "SaveAsInddAndIdml-1.0.jsx",
+                      "version":  "1.0",
+                      "sha256":  "48f32a911df8128b51459c939a5276ca02fe750b473b80422f4b9220be4d1bb3"
+                  },
+                  {
+                      "id":  "ReplaceVariables",
+                      "name":  "DesignTerminal-ReplaceVariables.jsx",
+                      "version":  "1.0",
+                      "sha256":  "f150b1ab7fd66649f87b2afbb1b95c936569720d184a0986898f3c6f89cc8a20"
+                  },
+                  {
+                      "id":  "CopyAndReplaceToXXX",
+                      "name":  "CopyAndReplaceToXXX.jsx",
+                      "version":  "1.0",
+                      "sha256":  "fce07931b554538fbe2560cc1be00f6a22a3438391439e4565abc84502d47c19"
+                  },
+                  {
+                      "id":  "ReplaceUnderscoresWithTabs",
+                      "name":  "ReplaceUnderscoresWithTabs.jsx",
+                      "version":  "1.0",
+                      "sha256":  "1d99685fc55fa9ed380ca37ce539dbf75a8978031db7e556f91a2a425643cc73"
+                  },
+                  {
+                      "id":  "TerminalBelarusPreparator",
+                      "name":  "TerminalBelarusPreparator.jsx",
+                      "version":  "1.0",
+                      "sha256":  "4d853c487a4020afd0a046674cc53814ab7fc729c2b8fdfce758a5b20ff337ca"
+                  }
+              ]
+}
