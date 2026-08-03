@@ -1,6 +1,6 @@
 #!/bin/bash
 # Downloads the full DT InDesign scripts kit into Scripts Panel / Actual Scripts.
-# Public mirror: https://xamartin.ru/dt-indesign-scripts/
+# Public mirror: https://github.com/xamartinsa/design-terminal-indesign-scripts
 # Source of truth: git sandbox/scripts/Indesign - *
 
 set -euo pipefail
