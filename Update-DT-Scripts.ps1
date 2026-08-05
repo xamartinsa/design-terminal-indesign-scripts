@@ -5,10 +5,35 @@ param(
 $ErrorActionPreference = 'Stop'
 $base = $BaseUrl.TrimEnd('/')
 $tmp = Join-Path $env:TEMP ('dt-indesign-kit-' + [guid]::NewGuid().ToString('n'))
+$logDir = Join-Path $env:LOCALAPPDATA 'DesignTerminal'
+$logFile = Join-Path $logDir 'update-last.log'
+$notes = New-Object System.Collections.Generic.List[string]
+$status = 'fail'
+$installTargets = @()
+
+function Write-DtLog {
+  try {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    $lines = @(
+      ("updatedAtLocal={0}" -f (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))
+      ("status={0}" -f $status)
+      ("host={0}" -f $env:COMPUTERNAME)
+      ("user={0}" -f $env:USERNAME)
+      ("baseUrl={0}" -f $base)
+    ) + $notes
+    [System.IO.File]::WriteAllLines($logFile, $lines)
+  } catch {}
+}
+
+function Add-Note([string]$text) {
+  $notes.Add($text) | Out-Null
+  Write-Host $text
+}
+
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 try {
+  Add-Note "Downloading manifest: $base/manifest.json"
   $manifestPath = Join-Path $tmp 'manifest.json'
-  Write-Host "Downloading manifest: $base/manifest.json"
   Invoke-WebRequest -Uri "$base/manifest.json" -OutFile $manifestPath -UseBasicParsing
   $m = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
@@ -33,18 +58,20 @@ try {
 
   $subdir = if ($m.panelSubdir) { [string]$m.panelSubdir } else { 'Design Terminal Git' }
   $legacySubdirs = @('DT Scripts GitHub Auto')
-  Write-Host "Kit updatedAt: $($m.updatedAt)"
-  Write-Host ("InDesign Version {0}: installing into {1} Scripts Panel folder(s)" -f $maxVer, $targets.Count)
+  Add-Note ("kitUpdatedAt={0}" -f $m.updatedAt)
+  Add-Note ("panelSubdir={0}" -f $subdir)
+  Add-Note ("InDesign Version {0}: installing into {1} Scripts Panel folder(s)" -f $maxVer, $targets.Count)
 
-  # Download + verify once
   $downloaded = @{}
   foreach ($f in $m.files) {
     $dl = Join-Path $tmp $f.name
-    Write-Host "  download $($f.id) -> $($f.name)"
+    Add-Note "  download $($f.id) -> $($f.name)"
     Invoke-WebRequest -Uri "$base/kit/$($f.name)" -OutFile $dl -UseBasicParsing
     $hash = (Get-FileHash -LiteralPath $dl -Algorithm SHA256).Hash.ToLowerInvariant()
     $expected = ([string]$f.sha256).ToLowerInvariant()
     if ($expected -and ($hash -ne $expected)) {
+      Add-Note "  expectedSha=$expected"
+      Add-Note "  gotSha=$hash"
       throw "SHA256 mismatch for $($f.name)"
     }
     $downloaded[$f.name] = $dl
@@ -53,11 +80,11 @@ try {
   foreach ($panel in $targets) {
     $target = Join-Path $panel.FullName $subdir
     New-Item -ItemType Directory -Path $target -Force | Out-Null
-    Write-Host "Target: $target"
+    $installTargets += $target
+    Add-Note "Target: $target"
     foreach ($f in $m.files) {
       $dl = $downloaded[$f.name]
       $dest = Join-Path $target $f.name
-      # Старые версии того же скрипта удаляем (без папки _old)
       Get-ChildItem -LiteralPath $target -Filter ($f.id + '-*.jsx') -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne $f.name } |
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
@@ -71,16 +98,28 @@ try {
       $legacyPath = Join-Path $panel.FullName $legacy
       if ((Test-Path -LiteralPath $legacyPath) -and ($legacy -ne $subdir)) {
         Remove-Item -LiteralPath $legacyPath -Recurse -Force
-        Write-Host "Removed legacy folder: $legacy"
+        Add-Note "Removed legacy folder: $legacy"
       }
     }
   }
 
+  $status = 'ok'
   Write-Host ""
-  Write-Host ("Done. Installed {0} scripts into '{1}' ({2} locale folder(s) under Version {3})." -f $m.files.Count, $subdir, $targets.Count, $maxVer)
+  Add-Note ("Done. Installed {0} scripts into '{1}' ({2} locale folder(s) under Version {3})." -f $m.files.Count, $subdir, $targets.Count, $maxVer)
   Write-Host 'Look in Scripts panel for that folder. Older InDesign versions were not changed.'
   Write-Host 'Restart InDesign if the Scripts panel looks stale.'
 }
+catch {
+  Add-Note ("ERROR: {0}" -f $_.Exception.Message)
+  throw
+}
 finally {
+  Write-DtLog
+  foreach ($t in $installTargets) {
+    try { Copy-Item -LiteralPath $logFile -Destination (Join-Path $t '_update-last.log') -Force } catch {}
+  }
+  if (Test-Path -LiteralPath $logFile) {
+    Write-Host "Log: $logFile"
+  }
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -1,29 +1,66 @@
 #!/usr/bin/env bash
 # macOS updater for Design Terminal InDesign scripts.
-# No admin. Writes only under ~/Library/Preferences/Adobe InDesign.
-# First open after download (Gatekeeper): right-click → Open — same as FigmaToIndd.
+# No admin. Writes only under ~/Library/Preferences/Adobe InDesign (+ a small log).
+# If macOS says the file is "damaged" (Telegram/quarantine): open Terminal and run:
+#   xattr -cr "/path/to/Update-DT-Scripts.command" && chmod +x "/path/to/Update-DT-Scripts.command" && open "/path/to/Update-DT-Scripts.command"
+# Or simply: bash "/path/to/Update-DT-Scripts.command"
 set -euo pipefail
 
 BASE_URL="${DT_SCRIPTS_BASE_URL:-https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main}"
 BASE_URL="${BASE_URL%/}"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/dt-indesign-kit.XXXXXX")"
-cleanup() { rm -rf "$TMP"; }
+LOG_DIR="$HOME/Library/Logs/DesignTerminal"
+LOG_FILE="$LOG_DIR/update-last.log"
+STATUS="fail"
+NOTES=()
+
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+log_line() {
+  NOTES+=("$*")
+  echo "$*"
+}
+
+write_log() {
+  {
+    echo "updatedAtLocal=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "status=$STATUS"
+    echo "host=$(hostname 2>/dev/null || echo unknown)"
+    echo "user=${USER:-unknown}"
+    echo "baseUrl=$BASE_URL"
+    echo "script=$0"
+    for line in "${NOTES[@]:-}"; do
+      echo "$line"
+    done
+  } >"$LOG_FILE" 2>/dev/null || true
+}
+
+cleanup() {
+  write_log
+  rm -rf "$TMP"
+}
 trap cleanup EXIT
 
 pause_close() {
   echo
+  echo "Log: $LOG_FILE"
   read -r -p "Press Enter to close…" _ || true
 }
 
 die() {
-  echo "ERROR: $*" >&2
-  echo "If macOS blocked the file: right-click Update-DT-Scripts.command → Open." >&2
-  echo "If Terminal says Permission denied: chmod +x \"\$HOME/Downloads/Update-DT-Scripts.command\"" >&2
+  log_line "ERROR: $*"
+  echo "If macOS says damaged/quarantine (often after Telegram):" >&2
+  echo "  xattr -cr \"$0\" && chmod +x \"$0\" && open \"$0\"" >&2
+  echo "Or run without double-click:" >&2
+  echo "  bash \"$0\"" >&2
+  echo "If Permission denied: chmod +x \"$0\"" >&2
   pause_close
   exit 1
 }
 
-if [[ -f "$0" && ! -x "$0" ]]; then
+# Clear quarantine if we were started via Terminal/bash (double-click may never reach here).
+if [[ -f "$0" ]]; then
+  xattr -dr com.apple.quarantine "$0" 2>/dev/null || true
   chmod +x "$0" 2>/dev/null || true
 fi
 
@@ -31,7 +68,7 @@ command -v curl >/dev/null 2>&1 || die "curl not found"
 command -v shasum >/dev/null 2>&1 || die "shasum not found"
 command -v osascript >/dev/null 2>&1 || die "osascript not found"
 
-echo "Downloading manifest: $BASE_URL/manifest.json"
+log_line "Downloading manifest: $BASE_URL/manifest.json"
 curl -fsSL "$BASE_URL/manifest.json" -o "$TMP/manifest.json" || die "failed to download manifest.json"
 
 MAP_FILE="$TMP/map.tsv"
@@ -64,6 +101,8 @@ HEADER="$(head -n 1 "$MAP_FILE")"
 UPDATED_AT="${HEADER%%$'\t'*}"
 SUBDIR="${HEADER#*$'\t'}"
 [[ -n "$SUBDIR" ]] || SUBDIR="Design Terminal Git"
+log_line "kitUpdatedAt=$UPDATED_AT"
+log_line "panelSubdir=$SUBDIR"
 
 ROOT="$HOME/Library/Preferences/Adobe InDesign"
 [[ -d "$ROOT" ]] || die "Adobe InDesign preferences not found:
@@ -96,15 +135,16 @@ while IFS= read -r panel; do
 done < "$PANEL_LIST"
 [[ ${#TARGETS[@]} -gt 0 ]] || die "no Scripts Panel under Version $MAX_VER"
 
-echo "Kit updatedAt: $UPDATED_AT"
-echo "InDesign Version $MAX_VER: installing into ${#TARGETS[@]} Scripts Panel folder(s)"
+log_line "InDesign Version $MAX_VER: installing into ${#TARGETS[@]} Scripts Panel folder(s)"
 
 while IFS=$'\t' read -r id name sha; do
   [[ -n "${name:-}" ]] || continue
-  echo "  download $id -> $name"
+  log_line "  download $id -> $name"
   curl -fsSL "$BASE_URL/kit/$name" -o "$TMP/$name" || die "failed to download $name"
   got="$(shasum -a 256 "$TMP/$name" | awk '{ print tolower($1) }')"
   if [[ -n "$sha" && "$got" != "$sha" ]]; then
+    log_line "  expectedSha=$sha"
+    log_line "  gotSha=$got"
     die "SHA256 mismatch for $name"
   fi
 done < <(tail -n +2 "$MAP_FILE")
@@ -112,7 +152,7 @@ done < <(tail -n +2 "$MAP_FILE")
 for panel in "${TARGETS[@]}"; do
   target="$panel/$SUBDIR"
   mkdir -p "$target"
-  echo "Target: $target"
+  log_line "Target: $target"
   while IFS=$'\t' read -r id name sha; do
     [[ -n "${name:-}" ]] || continue
     find "$target" -maxdepth 1 -type f -name "${id}-*.jsx" ! -name "$name" -delete 2>/dev/null || true
@@ -122,13 +162,18 @@ for panel in "${TARGETS[@]}"; do
   for legacy in "DT Scripts GitHub Auto"; do
     if [[ "$legacy" != "$SUBDIR" && -d "$panel/$legacy" ]]; then
       rm -rf "$panel/$legacy"
-      echo "Removed legacy folder: $legacy"
+      log_line "Removed legacy folder: $legacy"
     fi
   done
 done
 
+STATUS="ok"
 echo
-echo "Done. Installed scripts into '$SUBDIR' (${#TARGETS[@]} locale folder(s) under Version $MAX_VER)."
+log_line "Done. Installed scripts into '$SUBDIR' (${#TARGETS[@]} locale folder(s) under Version $MAX_VER)."
 echo "Look in Scripts panel for that folder. Older InDesign versions were not changed."
 echo "Restart InDesign if the Scripts panel looks stale."
+write_log
+for panel in "${TARGETS[@]}"; do
+  cp -f "$LOG_FILE" "$panel/$SUBDIR/_update-last.log" 2>/dev/null || true
+done
 pause_close
