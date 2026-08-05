@@ -1,75 +1,108 @@
 # DT InDesign Scripts
 
-Скрипты для InDesign Scripts Panel.
-
-Обновление: запусти Update-DT-Scripts.bat (Windows) или Update-DT-Scripts.command (macOS).
-Файлы ставятся в отдельную папку **Design Terminal Git** — другие скрипты не трогает.
-
-## macOS
-
-1. Скачай `Update-DT-Scripts.command` из браузера (не из Telegram, если можно).
-2. Первый запуск: правый клик → Open.
-3. Если macOS пишет «повреждено» (часто после Telegram) — открой Terminal и выполни (подставь свой путь):
-
-```bash
-xattr -cr ~/Downloads/Update-DT-Scripts.command
-chmod +x ~/Downloads/Update-DT-Scripts.command
-open ~/Downloads/Update-DT-Scripts.command
-```
-
-Или просто: `bash ~/Downloads/Update-DT-Scripts.command`
-
-Админ-права не нужны.
-
-## Лог (если что-то пошло не так уже в окне Terminal)
-
-- macOS: `~/Library/Logs/DesignTerminal/update-last.log`
-- Windows: `%LOCALAPPDATA%\DesignTerminal\update-last.log`
-- Копия рядом со скриптами: `Design Terminal Git/_update-last.log`
-
-В наборе:
-- TerminalPreparator
-- LegalParagraphSetup
-- ImageCroper
-- ImageLinkSyncer
-- SaveAsInddAndIdml
-- TerminalBelarusPreparator
+Скрипты для панели **Scripts** в Adobe InDesign.  
+Ставятся в отдельную папку **Design Terminal Git** — ваши остальные скрипты не трогает.
 
 ---
 
-# DT InDesign Scripts
+## Скачать апдейтер
 
-Scripts for the InDesign Scripts Panel.
+| Компьютер | Скачать (одна кнопка / ссылка) |
+|-----------|--------------------------------|
+| **Windows** | **[⬇ Update-DT-Scripts.bat](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/raw/main/Update-DT-Scripts.bat?inline=false)** |
+| **Mac** | **[⬇ Update-DT-Scripts.command](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/raw/main/Update-DT-Scripts.command?inline=false)** |
 
-Update: run Update-DT-Scripts.bat (Windows) or Update-DT-Scripts.command (macOS).
-Files go into a separate folder **Design Terminal Git** — other scripts are left alone.
+Скачивай из браузера по ссылке выше. Не пересылай файл через Telegram, если можно — на Mac из‑за этого часто «файл повреждён».
 
-## macOS
+После скачивания файл обычно лежит в папке **Загрузки / Downloads**.
 
-1. Prefer downloading `Update-DT-Scripts.command` in a browser (not Telegram).
-2. First launch: right-click → Open.
-3. If macOS says the file is “damaged” (common after Telegram), run in Terminal:
+---
+
+## Windows — куда нажать
+
+1. Открой ссылку **Windows** выше → файл сохранится (или браузер спросит «Сохранить»).
+2. В папке **Загрузки** найди `Update-DT-Scripts.bat`.
+3. **Дважды кликни** по нему.
+4. Если Windows спросит «разрешить этому приложению вносить изменения / открыть» — **Да / Run**.
+5. Подожди, пока в чёрном окне напишет **Done**. Нажми любую клавишу, чтобы закрыть.
+6. Открой (или перезапусти) **InDesign** → панель **Scripts** → папка **Design Terminal Git**.
+
+Админ-права не нужны.
+
+---
+
+## Mac — куда нажать
+
+1. Открой ссылку **Mac** выше → сохрани `Update-DT-Scripts.command` в **Downloads**.
+2. В Finder открой **Downloads**.
+3. **Не** обычный двойной клик с первого раза.  
+   **Правый клик** (или Control+клик) по файлу → **Open** / **Открыть**.
+4. Если спросит подтверждение — снова **Open**.
+5. Откроется Terminal, дождись **Done**, нажми Enter.
+6. Открой (или перезапусти) **InDesign** → **Scripts** → **Design Terminal Git**.
+
+Админ-права не нужны.
+
+### Если Mac пишет «повреждено» и предлагает Корзину
+
+Это карантин (часто после Telegram). Сделай так:
+
+1. Открой **Программы → Утилиты → Терминал** (или Spotlight → `Terminal`).
+2. **Скопируй целиком** одну строку ниже и вставь в Terminal (Cmd+V), нажми Enter:
 
 ```bash
-xattr -cr ~/Downloads/Update-DT-Scripts.command
-chmod +x ~/Downloads/Update-DT-Scripts.command
-open ~/Downloads/Update-DT-Scripts.command
+xattr -cr ~/Downloads/Update-DT-Scripts.command && chmod +x ~/Downloads/Update-DT-Scripts.command && open ~/Downloads/Update-DT-Scripts.command
 ```
 
-Or: `bash ~/Downloads/Update-DT-Scripts.command`
+3. Если файл лежит не в Downloads или называется иначе (например `Update-DT-Scripts (2).command`) — подставь свой путь, например:
 
-No admin rights needed.
+```bash
+xattr -cr ~/Downloads/Update-DT-Scripts\ \(2\).command && chmod +x ~/Downloads/Update-DT-Scripts\ \(2\).command && open ~/Downloads/Update-DT-Scripts\ \(2\).command
+```
 
-## Log (only if the updater already opened Terminal)
+Или ещё проще (тоже в Terminal, Enter):
 
-- macOS: `~/Library/Logs/DesignTerminal/update-last.log`
-- Windows: `%LOCALAPPDATA%\DesignTerminal\update-last.log`
-- Copy next to scripts: `Design Terminal Git/_update-last.log`
+```bash
+bash ~/Downloads/Update-DT-Scripts.command
+```
 
-Included:
-- TerminalPreparator
-- LegalParagraphSetup
-- ImageCroper
-- ImageLinkSyncer
-- SaveAsInddAndIdml
-- TerminalBelarusPreparator
+---
+
+## Что внутри набора
+
+- TerminalPreparator  
+- LegalParagraphSetup  
+- ImageCroper  
+- ImageLinkSyncer  
+- SaveAsInddAndIdml  
+- TerminalBelarusPreparator  
+
+## Если апдейтер уже открылся, но упал с ошибкой
+
+Пришли файл лога:
+
+| Система | Где лежит лог |
+|---------|----------------|
+| Mac | `~/Library/Logs/DesignTerminal/update-last.log` |
+| Windows | `%LOCALAPPDATA%\DesignTerminal\update-last.log` |
+| Оба | рядом со скриптами: `Design Terminal Git/_update-last.log` |
+
+На Mac в Finder: Cmd+Shift+G → вставь путь → Enter.
+
+---
+
+# English (short)
+
+| OS | Download |
+|----|----------|
+| **Windows** | **[Update-DT-Scripts.bat](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/raw/main/Update-DT-Scripts.bat?inline=false)** |
+| **Mac** | **[Update-DT-Scripts.command](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/raw/main/Update-DT-Scripts.command?inline=false)** |
+
+- **Windows:** double-click the `.bat` → wait for Done → InDesign Scripts → **Design Terminal Git**.  
+- **Mac:** right-click → Open (first time). If macOS says “damaged”, run in Terminal:
+
+```bash
+xattr -cr ~/Downloads/Update-DT-Scripts.command && chmod +x ~/Downloads/Update-DT-Scripts.command && open ~/Downloads/Update-DT-Scripts.command
+```
+
+Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/_update-last.log`
