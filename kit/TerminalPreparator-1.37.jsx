@@ -122,10 +122,6 @@ var legalFramesWithoutHyphenation = [];
 var legalFramesWithoutRussianLanguage = [];
 var legalFramesCheckedCount = 0;
 var checkedLegalTypographyFrames = {};
-var legalTextFramesForNoBreak = [];
-var legalUrlNoBreakApplied = 0;
-var legalUrlNoBreakList = [];
-var legalUrlNoBreakSeen = {};
 
 function addUniqueLimited(list, seen, value, limit) {
     if (!value || seen[value]) {
@@ -253,7 +249,6 @@ function checkLegalTypography(textFrame) {
         return;
     }
     checkedLegalTypographyFrames[key] = true;
-    legalTextFramesForNoBreak.push(textFrame);
     legalFramesCheckedCount++;
 
     var snippet = getLegalFrameSnippet(textFrame);
@@ -292,93 +287,6 @@ function overlapsBracketRange(start, end, ranges) {
     }
 
     return false;
-}
-
-function applyNoBreakToTextRange(textFrame, start, end) {
-    try {
-        if (end >= start && textFrame.characters.length > end) {
-            textFrame.characters.itemByRange(start, end).noBreak = true;
-            return true;
-        }
-    } catch(e) {}
-
-    return false;
-}
-
-function trimWebsiteCandidateToken(token, tokenStart) {
-    var startOffset = 0;
-    var endOffset = token.length - 1;
-
-    while (startOffset <= endOffset && token.charAt(startOffset).match(/[«"'\(\[\{]/)) {
-        startOffset++;
-    }
-    while (endOffset >= startOffset && token.charAt(endOffset).match(/[.,;:!?"'»\)\]\}]/)) {
-        endOffset--;
-    }
-
-    if (endOffset < startOffset) {
-        return null;
-    }
-
-    return {
-        text: token.substring(startOffset, endOffset + 1),
-        start: tokenStart + startOffset,
-        end: tokenStart + endOffset
-    };
-}
-
-function isSupportedWebsiteCandidate(value) {
-    try {
-        var text = value.toLowerCase();
-        text = text.replace(/^https?:\/\//, "");
-        text = text.replace(/^www\./, "");
-
-        if (text.indexOf(".") === -1 || text.indexOf("@") !== -1) {
-            return false;
-        }
-
-        var parts = text.split(".");
-        if (parts.length < 2) {
-            return false;
-        }
-
-        var tld = parts[parts.length - 1];
-        var allowedTlds = { "ru": true, "com": true, "kz": true, "by": true, "uz": true, "рф": true };
-        if (!allowedTlds[tld]) {
-            return false;
-        }
-
-        var domainName = parts[parts.length - 2];
-        return /[a-zа-я]/i.test(domainName);
-    } catch(e) {}
-
-    return false;
-}
-
-function applyNoBreakToLegalUrls() {
-    var count = 0;
-
-    for (var i = 0; i < legalTextFramesForNoBreak.length; i++) {
-        var textFrame = legalTextFramesForNoBreak[i];
-        try {
-            var contents = textFrame.contents;
-            var bracketRanges = getBracketRanges(contents);
-            var tokenPattern = /\S+/g;
-            var match;
-
-            while ((match = tokenPattern.exec(contents)) !== null) {
-                var candidate = trimWebsiteCandidateToken(match[0], match.index);
-                if (candidate && isSupportedWebsiteCandidate(candidate.text) && !overlapsBracketRange(candidate.start, candidate.end, bracketRanges)) {
-                    if (applyNoBreakToTextRange(textFrame, candidate.start, candidate.end)) {
-                        count++;
-                        addUniqueLimited(legalUrlNoBreakList, legalUrlNoBreakSeen, candidate.text, 50);
-                    }
-                }
-            }
-        } catch(e) {}
-    }
-
-    return count;
 }
 
 app.findGrepPreferences = NothingEnum.nothing;
@@ -677,9 +585,6 @@ app.findGrepPreferences.findWhat = ",(\\S)"; // Запятая, за котор�
 app.changeGrepPreferences.changeTo = ", $1";
 var foundCommasNoSpace = doc.changeGrep();
 commasFixed += foundCommasNoSpace.length;
-
-// Фиксируем сайты в лигале, чтобы домен не переносился по точке.
-legalUrlNoBreakApplied = applyNoBreakToLegalUrls();
 
 // 3.5 Проверка проблемных шрифтов
 var problematicFonts = {
@@ -1923,12 +1828,6 @@ if (websiteSpacingFixed > 0) {
     report += "✓ Исправлены пробелы в адресах сайтов:\n";
     for (var i = 0; i < websiteSpacingFixes.length; i++) {
         report += "   " + websiteSpacingFixes[i] + "\n";
-    }
-}
-if (legalUrlNoBreakApplied > 0) {
-    report += "✓ Сайты в лигале защищены от переноса:\n";
-    for (var i = 0; i < legalUrlNoBreakList.length; i++) {
-        report += "   " + legalUrlNoBreakList[i] + "\n";
     }
 }
 if (legalFramesCheckedCount > 0 && legalFramesWithoutHyphenation.length === 0) {

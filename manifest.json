@@ -1,19 +1,19 @@
-﻿{
-    "updatedAt":  "2026-08-03T15:47:13Z",
+{
+    "updatedAt":  "2026-08-05T14:37:39Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
-    "panelSubdir":  "DT Scripts GitHub Auto",
+    "panelSubdir":  "Design Terminal Git",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
-                      "name":  "TerminalPreparator-1.36.jsx",
-                      "version":  "1.36",
-                      "sha256":  "b218581ff8e91816d99f43610f3e1fdb3fb13371a576d08b82a4c1b6575b5d94"
+                      "name":  "TerminalPreparator-1.37.jsx",
+                      "version":  "1.37",
+                      "sha256":  "da41bb7b1902bb757290570b9160c991401427ba59f9abb67eca815e4e5cf006"
                   },
                   {
                       "id":  "LegalParagraphSetup",
-                      "name":  "LegalParagraphSetup-1.9.jsx",
-                      "version":  "1.9",
-                      "sha256":  "472a17f124981a7fe8529455f1710e47c0dae768afc76ecee56ac034d2a3b10a"
+                      "name":  "LegalParagraphSetup-1.11.jsx",
+                      "version":  "1.11",
+                      "sha256":  "1f6cae535690d3ed7497fd4a5533fdd54567c7c7615116eb434e7251e07e72f2"
                   },
                   {
                       "id":  "ImageCroper",
@@ -31,7 +31,7 @@
                       "id":  "SaveAsInddAndIdml",
                       "name":  "SaveAsInddAndIdml-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "48f32a911df8128b51459c939a5276ca02fe750b473b80422f4b9220be4d1bb3"
+                      "sha256":  "afedb3316316e9314e96b7dfb6e099aa99f42f5b22e393c880015fd30ff02739"
                   },
                   {
                       "id":  "TerminalBelarusPreparator",

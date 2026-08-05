@@ -1,15 +1,16 @@
-// LegalParagraphSetup-1.9.jsx
+// LegalParagraphSetup-1.11.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification
 // - local GREP Styles (No Break) for short words + common prepositions/conjunctions
 // - No Break for Latin websites (dodo.ru) and Latin letter runs (no mid-word URL breaks)
+// - No Break for digit runs + following space ("1 пиццы", "1 клиента")
 // - quote cleanup → Russian guillemets «»
 // - spaced hyphen/en-dash " - " / " – " → em dash (not 10–12)
-// - strip a single trailing period at end of frame
+// - strip a single trailing period at end of frame (also after [...] variables)
 
 (function () {
-    var SCRIPT_VERSION = "1.9";
+    var SCRIPT_VERSION = "1.11";
     var NO_BREAK_CHAR_STYLE_NAME = "No Break";
 
     // Base patterns (same idea as BasicParagraphSetup) + longer RU prepositions/conjunctions.
@@ -20,6 +21,9 @@
     // - [A-Za-z]{2,}                     → Latin runs (InDesign may break Latin mid-word under RU)
     // - .\.[\\l\\u]                      → letter/digit + "." + letter (keeps *.ru glue; Unicode letters)
     // Latin-only for full domains so we don't glue Cyrillic "г.Саратов" as one unbreakable blob.
+    //
+    // Numbers (1.11):
+    // - \<\d+\s  → "1 " / "10 " stay with the next word (не «1» в конце строки, «пиццы» на следующей)
     var GREP_EXPRESSION =
         "[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+" +
         "|[A-Za-z]{2,}" +
@@ -27,6 +31,7 @@
         "|\\<(?:для|или|при|над|под|без|про|через|чтобы|также|если|когда|после|перед|между|около|вместо|среди|кроме|возле|вдоль|против|ради|сквозь|согласно|вокруг|насчёт|насчет)\\s" +
         "|\\<[\\l\\u][\\l\\u]\\s" +
         "|\\<[\\l\\u]\\s" +
+        "|\\<\\d+\\s" +
         "|\\s—" +
         "|\\<[\\l\\u]\\.\\s";
 
@@ -113,7 +118,8 @@
                         existing.grepExpression.indexOf("\\<[\\l\\u]\\s") !== -1 ||
                         existing.grepExpression.indexOf("для|или|при") !== -1 ||
                         existing.grepExpression.indexOf("[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+") !== -1 ||
-                        existing.grepExpression.indexOf("[A-Za-z]{2,}") !== -1
+                        existing.grepExpression.indexOf("[A-Za-z]{2,}") !== -1 ||
+                        existing.grepExpression.indexOf("\\<\\d+\\s") !== -1
                     )
                 ) {
                     existing.remove();
@@ -246,9 +252,11 @@
         return true;
     }
 
-    // Remove one trailing period at the very end of the frame (after spaces/returns),
-    // but not if it looks like an abbreviation (letter + period) without much before —
-    // only strip when previous non-space char is a letter/digit and this is end punctuation.
+    // Remove one trailing period at the very end of the frame (after spaces/returns).
+    // Cases:
+    // - "...наличие." → strip
+    // - "...[company.legalAddress]." → strip (period after DT variable ])
+    // - "...г." / short abbr → keep
     function stripTrailingPeriod(textFrame) {
         var text = textFrame.texts[0];
         var contents = String(text.contents);
@@ -261,10 +269,6 @@
             return false;
         }
 
-        // Don't strip "г." / "стр." style if the only content ends with single-letter abbr —
-        // require at least some sentence body: char before '.' should not be start of tiny token only.
-        // Safer rule: strip '.' only if preceded by a letter and that letter is part of a word
-        // longer than 1 char (so "г." stays, "наличие." goes).
         var before = i - 1;
         while (before >= 0 && /[\s\r\n]/.test(contents.charAt(before))) {
             before--;
@@ -274,6 +278,13 @@
         }
 
         var prev = contents.charAt(before);
+
+        // Legal often ends with a variable: [company.legalAddress].
+        if (prev === "]") {
+            text.characters[i].contents = "";
+            return true;
+        }
+
         if (!/[0-9A-Za-zА-Яа-яЁё]/.test(prev)) {
             return false;
         }
