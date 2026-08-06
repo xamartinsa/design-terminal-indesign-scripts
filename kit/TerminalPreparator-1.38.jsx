@@ -559,29 +559,38 @@ for (var i = 0; i < replacements.length; i++) {
 }
 
 // 3.1 Исправление запятых
+// Важно: десятичная запятая в числах (0,5 / 0,45 л) — НЕ пробел после запятой.
+// Старое правило ",(\\S)" → ", $1" ломало объёмы: 0,5 → "0, 5".
 var commasFixed = 0;
 
-// Сначала убираем пробелы перед запятой
+// Сначала чиним уже сломанные десятичные: "0, 5" / "0,  45" → "0,5" / "0,45"
 app.findGrepPreferences = NothingEnum.nothing;
 app.changeGrepPreferences = NothingEnum.nothing;
-app.findGrepPreferences.findWhat = "\\s+,"; // Один или более пробелов перед запятой
+app.findGrepPreferences.findWhat = "(\\d),\\s+(\\d)";
+app.changeGrepPreferences.changeTo = "$1,$2";
+var foundDecimalCommas = doc.changeGrep();
+commasFixed += foundDecimalCommas.length;
+
+// Убираем пробелы перед запятой
+app.findGrepPreferences = NothingEnum.nothing;
+app.changeGrepPreferences = NothingEnum.nothing;
+app.findGrepPreferences.findWhat = "\\s+,";
 app.changeGrepPreferences.changeTo = ",";
 var foundCommasBefore = doc.changeGrep();
 commasFixed += foundCommasBefore.length;
 
-// Затем оставляем только один пробел после запятой
+// Один пробел после запятой, но не перед цифрой (не трогаем 0,5)
 app.findGrepPreferences = NothingEnum.nothing;
 app.changeGrepPreferences = NothingEnum.nothing;
-app.findGrepPreferences.findWhat = ",\\s+"; // Запятая, за которой один или более пробелов
+app.findGrepPreferences.findWhat = ",(?!\\d)\\s+";
 app.changeGrepPreferences.changeTo = ", ";
 var foundCommasAfter = doc.changeGrep();
 commasFixed += foundCommasAfter.length;
 
-// Исправляем случаи, когда после запятой нет пробела, но есть буква или другой символ
-// Ищем запятую, за которой следует любой не пробельный символ (кроме новой строки)
+// Пробел после запятой, если его нет — только когда дальше не цифра (не 0,5)
 app.findGrepPreferences = NothingEnum.nothing;
 app.changeGrepPreferences = NothingEnum.nothing;
-app.findGrepPreferences.findWhat = ",(\\S)"; // Запятая, за которой не-пробельный символ
+app.findGrepPreferences.findWhat = ",(?!\\d)(\\S)";
 app.changeGrepPreferences.changeTo = ", $1";
 var foundCommasNoSpace = doc.changeGrep();
 commasFixed += foundCommasNoSpace.length;
