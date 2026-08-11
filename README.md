@@ -76,6 +76,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - ImageLinkSyncer  
 - SaveAsInddAndIdml  
 - TerminalBelarusPreparator  
+- AutoFontSizeGrep  
 
 ## Если апдейтер уже открылся, но упал с ошибкой
 
