@@ -1441,6 +1441,142 @@ function hasSupportedVariableObjectSuffix(inner) {
     return isQrVariableObjectName(inner) || isLinkVariableObjectName(inner);
 }
 
+// Ферма (fillLink + fit) падает: "leave the pasteboard" на #link
+// (картинка из value set / штатный бlid). Страницу не трогаем — только серое поле.
+// Если в макете есть хотя бы один #link — подстраховываем pasteboard (даже без вылета:
+// PNG из set может быть больше плейсхолдера). Нет #link — ничего не делаем.
+var PASTEBOARD_LINK_BUFFER_PT = 400;
+var PASTEBOARD_LINK_FLOOR_PT = 2000;
+var pasteboardExpandInfo = null;
+
+function round1(n) {
+    return Math.round(n * 10) / 10;
+}
+
+function expandPasteboardForLinkOverhang() {
+    var view = doc.viewPreferences;
+    var oldH = view.horizontalMeasurementUnits;
+    var oldV = view.verticalMeasurementUnits;
+    view.horizontalMeasurementUnits = MeasurementUnits.POINTS;
+    view.verticalMeasurementUnits = MeasurementUnits.POINTS;
+
+    var result = {
+        changed: false,
+        fromH: 0,
+        fromV: 0,
+        toH: 0,
+        toV: 0,
+        details: []
+    };
+
+    try {
+        var current = doc.pasteboardPreferences.pasteboardMargins;
+        var curH = current[0];
+        var curV = current[1];
+        result.fromH = curH;
+        result.fromV = curV;
+        result.toH = curH;
+        result.toV = curV;
+
+        var maxH = 0;
+        var maxV = 0;
+        var hasLink = false;
+        var details = [];
+
+        function considerItem(item, page) {
+            if (!item || !page) return;
+            var name = "";
+            try {
+                name = item.name;
+            } catch (eName) {
+                return;
+            }
+            if (!name || name.charAt(0) !== "[" || name.charAt(name.length - 1) !== "]") return;
+            var inner = name.slice(1, -1);
+            if (!isLinkVariableObjectName(inner)) return;
+
+            hasLink = true;
+
+            var gb;
+            var pb;
+            try {
+                gb = item.geometricBounds;
+                pb = page.bounds;
+            } catch (eBounds) {
+                return;
+            }
+
+            var overLeft = pb[1] - gb[1];
+            var overRight = gb[3] - pb[3];
+            var overTop = pb[0] - gb[0];
+            var overBottom = gb[2] - pb[2];
+            var side = Math.max(0, overLeft, overRight);
+            var vert = Math.max(0, overTop, overBottom);
+            if (side > 0.5 || vert > 0.5) {
+                details.push({
+                    name: name,
+                    overLeft: Math.max(0, overLeft),
+                    overRight: Math.max(0, overRight),
+                    overTop: Math.max(0, overTop),
+                    overBottom: Math.max(0, overBottom)
+                });
+            }
+            if (side > maxH) maxH = side;
+            if (vert > maxV) maxV = vert;
+        }
+
+        var i;
+        var j;
+        for (i = 0; i < doc.pages.length; i++) {
+            var page = doc.pages[i];
+            var pageItems = page.allPageItems;
+            for (j = 0; j < pageItems.length; j++) {
+                considerItem(pageItems[j], page);
+            }
+        }
+        for (i = 0; i < doc.masterSpreads.length; i++) {
+            var ms = doc.masterSpreads[i];
+            for (j = 0; j < ms.pages.length; j++) {
+                var masterPage = ms.pages[j];
+                var masterItems = masterPage.allPageItems;
+                var k;
+                for (k = 0; k < masterItems.length; k++) {
+                    considerItem(masterItems[k], masterPage);
+                }
+            }
+        }
+
+        result.details = details;
+        result.hasLink = hasLink;
+        if (hasLink) {
+            var needH = Math.max(curH, PASTEBOARD_LINK_FLOOR_PT);
+            var needV = Math.max(curV, PASTEBOARD_LINK_FLOOR_PT);
+            if (maxH > 0) needH = Math.max(needH, maxH + PASTEBOARD_LINK_BUFFER_PT);
+            if (maxV > 0) needV = Math.max(needV, maxV + PASTEBOARD_LINK_BUFFER_PT);
+
+            var changed = false;
+            if (needH > curH + 1) {
+                changed = true;
+            }
+            if (needV > curV + 1) {
+                changed = true;
+            }
+            if (changed) {
+                doc.pasteboardPreferences.pasteboardMargins = [needH, needV];
+                result.changed = true;
+                result.toH = needH;
+                result.toV = needV;
+            }
+        }
+    } catch (eExpand) {
+        result.error = String(eExpand);
+    }
+
+    view.horizontalMeasurementUnits = oldH;
+    view.verticalMeasurementUnits = oldV;
+    return result;
+}
+
 function itemHasLinkedAsset(item) {
     try {
         if (item.itemLink && item.itemLink.isValid) {
@@ -1519,6 +1655,12 @@ try {
     }
 } catch (e) {
     // Ошибку игнорируем, чтобы не прерывать выполнение
+}
+
+try {
+    pasteboardExpandInfo = expandPasteboardForLinkOverhang();
+} catch (ePasteboard) {
+    pasteboardExpandInfo = { changed: false, error: String(ePasteboard), details: [] };
 }
 
 
@@ -1901,6 +2043,25 @@ if (variablesWithoutBrackets.length > 0) {
 
 if (systemVariablesFixedCount > 0) {
     report += "✓ Исправлены ошибки в системных переменных:\n" + fixedSystemVariablesReport;
+}
+
+if (pasteboardExpandInfo && pasteboardExpandInfo.error) {
+    report += "⚠ Не удалось расширить pasteboard для #link: " + pasteboardExpandInfo.error + "\n\n";
+} else if (pasteboardExpandInfo && pasteboardExpandInfo.changed) {
+    report += "✓ Есть #link — pasteboard расширен, чтобы ферма смогла подставить картинку (value set)\n";
+    report += "   " + round1(pasteboardExpandInfo.fromH) + "×" + round1(pasteboardExpandInfo.fromV) +
+        " → " + round1(pasteboardExpandInfo.toH) + "×" + round1(pasteboardExpandInfo.toV) + " pt\n";
+    var pbDetails = pasteboardExpandInfo.details || [];
+    for (var pbi = 0; pbi < pbDetails.length; pbi++) {
+        var d = pbDetails[pbi];
+        var bits = [];
+        if (d.overTop > 0.5) bits.push("верх " + round1(d.overTop) + " pt");
+        if (d.overBottom > 0.5) bits.push("низ " + round1(d.overBottom) + " pt");
+        if (d.overLeft > 0.5) bits.push("лево " + round1(d.overLeft) + " pt");
+        if (d.overRight > 0.5) bits.push("право " + round1(d.overRight) + " pt");
+        report += "   • " + d.name + ": вылет " + bits.join(", ") + "\n";
+    }
+    report += "   Страница и бlid не менялись. Фрейм картинки подрезать не надо.\n";
 }
 
 alert(report);
