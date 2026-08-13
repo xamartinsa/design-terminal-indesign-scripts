@@ -1299,6 +1299,113 @@ function getParentOfLinksFolder(path) {
     return getFolderPath(path);
 }
 
+function stripTrailingSlash(path) {
+    var p = String(path || "");
+    while (p.length > 1 && p.charAt(p.length - 1) === "/") {
+        p = p.substring(0, p.length - 1);
+    }
+    return p;
+}
+
+/** Папка файла = ожидаемый Links или его подпапка (без учёта регистра). */
+function pathIsUnderLinksFolder(imageFolder, expectedLinksFolder) {
+    if (!imageFolder || !expectedLinksFolder) return false;
+    var img = stripTrailingSlash(normalizePath(imageFolder)).toLowerCase();
+    var lnk = stripTrailingSlash(normalizePath(expectedLinksFolder)).toLowerCase();
+    return img === lnk || img.indexOf(lnk + "/") === 0;
+}
+
+function pluralImagesRu(n) {
+    var n10 = n % 10;
+    var n100 = n % 100;
+    if (n10 === 1 && n100 !== 11) return "изображение";
+    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return "изображения";
+    return "изображений";
+}
+
+/**
+ * Сводка «линки не из Links этого INDD»: группировка по папке, без простыни путей.
+ * items: [{ name, folder }, ...]
+ */
+function formatNotInLinksReport(items, expectedLinksFolder, maxExamples) {
+    if (!items || items.length === 0) return "";
+    if (!maxExamples) maxExamples = 5;
+
+    var groups = [];
+    var byFolder = {};
+    var i;
+    for (i = 0; i < items.length; i++) {
+        var folder = items[i].folder || "(нет пути)";
+        if (!byFolder[folder]) {
+            byFolder[folder] = [];
+            groups.push(folder);
+        }
+        byFolder[folder].push(items[i].name);
+    }
+
+    var lines = [];
+    var n = items.length;
+    lines.push("⚠ " + n + " " + pluralImagesRu(n) + " ссылаются не на Links рядом с открытым INDD.");
+    if (expectedLinksFolder) {
+        lines.push("   Ожидается: " + expectedLinksFolder);
+    }
+    for (i = 0; i < groups.length; i++) {
+        var f = groups[i];
+        var names = byFolder[f];
+        lines.push("   Сейчас: " + f + "  (" + names.length + ")");
+        var shown = Math.min(maxExamples, names.length);
+        var j;
+        for (j = 0; j < shown; j++) {
+            lines.push("      • " + names[j]);
+        }
+        if (names.length > shown) {
+            lines.push("      … и ещё " + (names.length - shown));
+        }
+    }
+    lines.push("   Частый случай: Package на Desktop, а открыт файл с Диска. Для Терминала линки должны быть в Links рядом с этим INDD.");
+    return lines.join("\n") + "\n";
+}
+
+function showReportDialog(reportText) {
+    try {
+        var w = new Window("dialog", "Terminal Preparator");
+        w.orientation = "column";
+        w.alignChildren = ["fill", "fill"];
+        w.margins = 12;
+        w.spacing = 10;
+
+        var boxW = 640;
+        var boxH = 420;
+        try {
+            if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
+                var scr = $.screens[0];
+                var scrH = scr.bottom - scr.top;
+                var scrW = scr.right - scr.left;
+                if (scrW > 0) boxW = Math.min(720, Math.max(480, Math.floor(scrW * 0.55)));
+                if (scrH > 0) boxH = Math.min(520, Math.max(280, Math.floor(scrH * 0.55)));
+            }
+        } catch (eScr) {}
+
+        var et = w.add("edittext", undefined, reportText, {
+            multiline: true,
+            readonly: true,
+            scrolling: true
+        });
+        et.preferredSize = [boxW, boxH];
+        et.minimumSize = [boxW, Math.min(280, boxH)];
+        et.alignment = ["fill", "fill"];
+
+        var row = w.add("group");
+        row.alignment = ["right", "bottom"];
+        row.add("button", undefined, "OK", {name: "ok"});
+
+        w.center();
+        w.show();
+    } catch (eWin) {
+        alert(reportText);
+    }
+}
+
 if (linksFolderPath) {
     var inddFolder = getFolderPath(doc.fullName);
     var linksFolder = normalizeDriveLetterPath(inddFolder + '/Links');
@@ -1326,15 +1433,15 @@ if (linksFolderPath) {
             // Если doc.fullName не определён, используем imageFolder как папку Links для сравнения
             if (!doc.fullName) {
                 $.writeln("⚠ doc.fullName не определён, сравнение с папкой Links невозможно.");
-            } else if (linksFolderDiag && imageFolder !== linksFolderDiag) {
+            } else if (linksFolderDiag && !pathIsUnderLinksFolder(imageFolder, linksFolderDiag)) {
                 $.writeln("⚠ Не в папке Links (" + imageFolder + ")");
             }
-            if (imageFolder !== linksFolder) {
-                notInLinksFolder.push(link.name + ' (' + imageFolder + ')');
+            if (!pathIsUnderLinksFolder(imageFolder, linksFolder)) {
+                notInLinksFolder.push({ name: link.name, folder: imageFolder });
             }
             usedLinkNames[link.name] = true;
         } catch(e) {
-            notInLinksFolder.push(link.name + ' (ошибка: ' + e + ')');
+            notInLinksFolder.push({ name: link.name, folder: "ошибка: " + e });
             comparisonDetails.push('❌ ' + link.name + ' — ошибка: ' + e);
             hasWrongLinks = true;
         }
@@ -1753,13 +1860,7 @@ if (missingLinks.length > 0) {
 }
 
 if (notInLinksFolder.length > 0) {
-    report += "⚠ Обнаружены изображения не из папки Links (или её подпапок):\n";
-    for (var i = 0; i < notInLinksFolder.length; i++) {
-        report += "   • " + notInLinksFolder[i] + "\n";
-    }
-    if (normalizedLinksFolder) {
-        report += "\nОжидаемая папка Links: " + normalizedLinksFolder + "\n";
-    }
+    report += formatNotInLinksReport(notInLinksFolder, normalizedLinksFolder, 5);
     report += "\n";
 }
 
@@ -2064,5 +2165,5 @@ if (pasteboardExpandInfo && pasteboardExpandInfo.error) {
     report += "   Страница и бlid не менялись. Фрейм картинки подрезать не надо.\n";
 }
 
-alert(report);
+showReportDialog(report);
 
