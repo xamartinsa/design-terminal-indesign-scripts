@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-08-13T12:45:50Z",
+    "updatedAt":  "2026-08-14T13:47:16Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -11,9 +11,9 @@
                   },
                   {
                       "id":  "LegalParagraphSetup",
-                      "name":  "LegalParagraphSetup-1.11.jsx",
-                      "version":  "1.11",
-                      "sha256":  "1f6cae535690d3ed7497fd4a5533fdd54567c7c7615116eb434e7251e07e72f2"
+                      "name":  "LegalParagraphSetup-1.12.jsx",
+                      "version":  "1.12",
+                      "sha256":  "fac59141eb841379c97d7ee5efb015df98d6722b730b080320700f44f2db1c0e"
                   },
                   {
                       "id":  "ImageCroper",
@@ -44,6 +44,12 @@
                       "name":  "AutoFontSizeGrep-2.26.jsx",
                       "version":  "2.26",
                       "sha256":  "e04be0f29519239b04b3a043c58f3b385a9951d401fd159b10e5ad1ad08e6b4d"
+                  },
+                  {
+                      "id":  "LegalBarcodeInsert",
+                      "name":  "LegalBarcodeInsert-1.0.jsx",
+                      "version":  "1.0",
+                      "sha256":  "39c630948a1730004f80da11aecfb7f5ff5e89b193d84852fecbdf0f42bff30b"
                   }
               ]
 }

@@ -1,16 +1,17 @@
-// LegalParagraphSetup-1.11.jsx
+// LegalParagraphSetup-1.12.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification
 // - local GREP Styles (No Break) for short words + common prepositions/conjunctions
 // - No Break for Latin websites (dodo.ru) and Latin letter runs (no mid-word URL breaks)
 // - No Break for digit runs + following space ("1 пиццы", "1 клиента")
+// - No Break for Code39 barcode `*[terminal.renderCode]*` / `*P530.L4.T5.R12*`
 // - quote cleanup → Russian guillemets «»
 // - spaced hyphen/en-dash " - " / " – " → em dash (not 10–12)
 // - strip a single trailing period at end of frame (also after [...] variables)
 
 (function () {
-    var SCRIPT_VERSION = "1.11";
+    var SCRIPT_VERSION = "1.12";
     var NO_BREAK_CHAR_STYLE_NAME = "No Break";
 
     // Base patterns (same idea as BasicParagraphSetup) + longer RU prepositions/conjunctions.
@@ -24,8 +25,13 @@
     //
     // Numbers (1.11):
     // - \<\d+\s  → "1 " / "10 " stay with the next word (не «1» в конце строки, «пиццы» на следующей)
+    //
+    // Barcode (1.12):
+    // - \*[A-Za-z0-9.]+\*  → whole Code39 run after farm replace (*prerender* / *P530.L4.T5.R12*)
+    //   Hard NoBreak on the template run is still required; GREP is a safety net on legal frames.
     var GREP_EXPRESSION =
-        "[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+" +
+        "\\*[A-Za-z0-9.]+\\*" +
+        "|[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+" +
         "|[A-Za-z]{2,}" +
         "|.\\.[\\l\\u]" +
         "|\\<(?:для|или|при|над|под|без|про|через|чтобы|также|если|когда|после|перед|между|около|вместо|среди|кроме|возле|вдоль|против|ради|сквозь|согласно|вокруг|насчёт|насчет)\\s" +
@@ -119,7 +125,8 @@
                         existing.grepExpression.indexOf("для|или|при") !== -1 ||
                         existing.grepExpression.indexOf("[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+") !== -1 ||
                         existing.grepExpression.indexOf("[A-Za-z]{2,}") !== -1 ||
-                        existing.grepExpression.indexOf("\\<\\d+\\s") !== -1
+                        existing.grepExpression.indexOf("\\<\\d+\\s") !== -1 ||
+                        existing.grepExpression.indexOf("\\*[A-Za-z0-9.]+\\*") !== -1
                     )
                 ) {
                     existing.remove();
