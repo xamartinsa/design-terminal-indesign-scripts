@@ -2124,9 +2124,6 @@ if (websiteSpacingFixed > 0) {
         report += "   " + websiteSpacingFixes[i] + "\n";
     }
 }
-if (legalFramesCheckedCount > 0 && legalFramesWithoutHyphenation.length === 0) {
-    report += "✓ Переносы в лигале проверены и включены\n";
-}
 if (quotesFixed > 0) {
     report += "✓ Исправлены " + quotesFixed + " пары кавычек\n";
 }
