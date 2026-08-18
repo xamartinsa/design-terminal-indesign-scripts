@@ -1,7 +1,8 @@
 #target "indesign"
 
-// ImageCroper 6.0
+// ImageCroper 6.1
 // Кроп выбранного image-фрейма через Photoshop (исходные пиксели).
+// Цветовое пространство и ICC не трогаем: как было в файле, так и остаётся.
 //
 // Почему не InDesign exportFile (v2–v5): PNG с прозрачностью даёт полоски
 // в альфе, от них не избавиться. JPEG-экспорт поворот «запекает», но PNG — нет.
@@ -12,7 +13,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.0";
+    var SCRIPT_VERSION = "6.1";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -70,8 +71,8 @@
         return;
     }
 
-    var savePng = !(ext === ".jpg" || ext === ".jpeg");
-    var newExt = savePng ? ".png" : ".jpg";
+    var saveKind = saveKindFromExt(ext);
+    var newExt = saveKind.ext;
 
     var oldH = doc.viewPreferences.horizontalMeasurementUnits;
     var oldV = doc.viewPreferences.verticalMeasurementUnits;
@@ -124,7 +125,7 @@
             targetW: targetW,
             targetH: targetH,
             dpi: finalDpi,
-            savePng: savePng ? 1 : 0
+            saveKind: saveKind.code
         });
 
         if (psResult !== "OK") {
@@ -183,6 +184,13 @@
             }
         } catch (e2) {}
         return null;
+    }
+
+    function saveKindFromExt(fileExt) {
+        if (fileExt === ".jpg" || fileExt === ".jpeg") return { code: 1, ext: ".jpg" };
+        if (fileExt === ".tif" || fileExt === ".tiff") return { code: 3, ext: ".tif" };
+        if (fileExt === ".psd" || fileExt === ".psb") return { code: 4, ext: ".psd" };
+        return { code: 2, ext: ".png" };
     }
 
     function getMinPPI(area) {
@@ -310,12 +318,17 @@
             "var targetW = " + num(p.targetW) + ";\n" +
             "var targetH = " + num(p.targetH) + ";\n" +
             "var dpi = " + num(p.dpi) + ";\n" +
-            "var savePng = " + num(p.savePng) + ";\n" +
+            "var saveKind = " + num(p.saveKind) + ";\n" +
             "var opened = null;\n" +
             "var work = null;\n" +
             "var wasOpen = false;\n" +
+            "var oldCS = null;\n" +
             "function px(v){ return Number(v); }\n" +
             "try {\n" +
+            "  try { oldCS = app.colorSettings; } catch (eCS0) {}\n" +
+            "  try { app.colorSettings = 'Preserve Embedded Profiles'; } catch (eCS1) {\n" +
+            "    try { app.colorSettings = 'Сохранять встроенные профили'; } catch (eCS2) {}\n" +
+            "  }\n" +
             "  if (!src.exists) return 'ERR:source missing';\n" +
             "  var i;\n" +
             "  for (i = 0; i < app.documents.length; i++) {\n" +
@@ -331,7 +344,11 @@
             "    try { opened.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) {}\n" +
             "    opened = null;\n" +
             "  }\n" +
-            "  if (savePng) {\n" +
+            "  try {\n" +
+            "    if (work.mode === DocumentMode.BITMAP) work.changeMode(ChangeMode.GRAYSCALE);\n" +
+            "    if (work.mode === DocumentMode.INDEXEDCOLOR) work.changeMode(ChangeMode.RGB);\n" +
+            "  } catch (eMode) {}\n" +
+            "  if (saveKind !== 1) {\n" +
             "    try {\n" +
             "      if (work.layers.length > 0 && work.layers[0].isBackgroundLayer) {\n" +
             "        work.layers[0].isBackgroundLayer = false;\n" +
@@ -368,31 +385,40 @@
             "  } else {\n" +
             "    try { work.resizeImage(undefined, undefined, dpi, ResampleMethod.NONE); } catch (eDpi) {}\n" +
             "  }\n" +
-            "  try {\n" +
-            "    if (work.mode === DocumentMode.BITMAP) work.changeMode(ChangeMode.GRAYSCALE);\n" +
-            "    if (work.mode !== DocumentMode.RGB) work.changeMode(ChangeMode.RGB);\n" +
-            "  } catch (eMode) {}\n" +
-            "  try {\n" +
-            "    if (work.bitsPerChannel !== BitsPerChannelType.EIGHT) work.bitsPerChannel = BitsPerChannelType.EIGHT;\n" +
-            "  } catch (eBit) {}\n" +
-            "  if (savePng) {\n" +
-            "    var png = new PNGSaveOptions();\n" +
-            "    png.compression = 6;\n" +
-            "    png.interlaced = false;\n" +
-            "    work.saveAs(dst, png, true);\n" +
-            "  } else {\n" +
+            "  if (saveKind === 1) {\n" +
+            "    try {\n" +
+            "      if (work.bitsPerChannel !== BitsPerChannelType.EIGHT) work.bitsPerChannel = BitsPerChannelType.EIGHT;\n" +
+            "    } catch (eBit) {}\n" +
             "    var jpg = new JPEGSaveOptions();\n" +
             "    jpg.quality = 12;\n" +
             "    jpg.embedColorProfile = true;\n" +
             "    jpg.formatOptions = FormatOptions.STANDARDBASELINE;\n" +
             "    jpg.matte = MatteType.WHITE;\n" +
             "    work.saveAs(dst, jpg, true);\n" +
+            "  } else if (saveKind === 3) {\n" +
+            "    var tif = new TiffSaveOptions();\n" +
+            "    tif.embedColorProfile = true;\n" +
+            "    tif.layers = false;\n" +
+            "    try { tif.imageCompression = TIFFEncoding.TIFFLZW; } catch (eEnc) {}\n" +
+            "    try { tif.transparency = true; } catch (eTr) {}\n" +
+            "    work.saveAs(dst, tif, true);\n" +
+            "  } else if (saveKind === 4) {\n" +
+            "    var psd = new PhotoshopSaveOptions();\n" +
+            "    psd.embedColorProfile = true;\n" +
+            "    psd.layers = false;\n" +
+            "    work.saveAs(dst, psd, true);\n" +
+            "  } else {\n" +
+            "    var png = new PNGSaveOptions();\n" +
+            "    png.compression = 6;\n" +
+            "    png.interlaced = false;\n" +
+            "    work.saveAs(dst, png, true);\n" +
             "  }\n" +
             "  return 'OK';\n" +
             "} catch (e) {\n" +
             "  return 'ERR:' + e.message;\n" +
             "} finally {\n" +
             "  try { if (work) work.close(SaveOptions.DONOTSAVECHANGES); } catch (eW) {}\n" +
+            "  if (oldCS) { try { app.colorSettings = oldCS; } catch (eCS3) {} }\n" +
             "  app.preferences.rulerUnits = oldUnits;\n" +
             "  app.displayDialogs = DialogModes.ALL;\n" +
             "}\n" +
