@@ -289,6 +289,40 @@ function overlapsBracketRange(start, end, ranges) {
     return false;
 }
 
+// Figma/копирайты часто ставят <COMPANY_NAME> — ферма это не подставляет, только [company.name].
+var angleCompanyReplaceCount = 0;
+var leftoverAnglePlaceholders = [];
+(function replaceAngleCompanyPlaceholders() {
+    var map = [
+        { find: "(?i)<COMPANY_NAME>", to: "[company.name]" },
+        { find: "(?i)<COMPANY_STATE_NUMBER>", to: "[company.stateNumber]" },
+        { find: "(?i)<COMPANY_LEGAL_ADDRESS>", to: "[company.legalAddress]" }
+    ];
+    var m;
+    for (m = 0; m < map.length; m++) {
+        app.findGrepPreferences = NothingEnum.nothing;
+        app.changeGrepPreferences = NothingEnum.nothing;
+        app.findGrepPreferences.findWhat = map[m].find;
+        app.changeGrepPreferences.changeTo = map[m].to;
+        var changed = doc.changeGrep();
+        angleCompanyReplaceCount += changed.length;
+    }
+    app.findGrepPreferences = NothingEnum.nothing;
+    app.changeGrepPreferences = NothingEnum.nothing;
+    app.findGrepPreferences.findWhat = "<[A-Z][A-Z0-9_]{3,}>";
+    var leftovers = doc.findGrep();
+    var seen = {};
+    var L;
+    for (L = 0; L < leftovers.length; L++) {
+        var tok = leftovers[L].contents;
+        if (!seen[tok]) {
+            seen[tok] = true;
+            leftoverAnglePlaceholders.push(tok);
+        }
+    }
+    app.findGrepPreferences = NothingEnum.nothing;
+})();
+
 app.findGrepPreferences = NothingEnum.nothing;
 app.findGrepPreferences.findWhat = "\\[.*?\\]";
 
@@ -298,7 +332,8 @@ for (var i = 0; i < found.length; i++) {
     if (textFrame) {
         var variableName = found[i].contents;
         var frameText = textFrame.contents;
-        var isLegalFrame = frameText.match(/\[company\.(name|stateNumberLong|stateNumber|legalAddress)\]/);
+        var isLegalFrame = frameText.match(/\[company\.(name|stateNumberLong|stateNumber|legalAddress)\]/) ||
+            frameText.match(/<COMPANY_(NAME|STATE_NUMBER|LEGAL_ADDRESS)>/i);
         var isHidden = isAnyParentHidden(textFrame);
 
         if (isLegalFrame) {
@@ -1897,7 +1932,8 @@ if (
     linkVariableWithoutLinkErrors.length > 0 ||
     missingSwatchErrors.length > 0 ||
     missingFontsFound ||
-    repeatedWordsFound.length > 0
+    repeatedWordsFound.length > 0 ||
+    leftoverAnglePlaceholders.length > 0
 ) {
     //report = "⚠ Файл не готов к Терминалу!\n\n";
     
@@ -2073,6 +2109,12 @@ if (ogrnStateNumberLongCount > 0 || ogrnStateNumberCount > 0 || stateNumberCount
 }
 
 // В САМЫЙ КОНЕЦ: сайт, кавычки и пробелы после точек
+if (angleCompanyReplaceCount > 0) {
+    report += "\n✓ Плейсхолдеры <COMPANY_*> заменены на [company.name] / [company.stateNumber] / [company.legalAddress] (" + angleCompanyReplaceCount + ")\n";
+}
+if (leftoverAnglePlaceholders.length > 0) {
+    report += "⚠ В тексте остались угловые плейсхолдеры — ферма их не подставит: " + leftoverAnglePlaceholders.join(", ") + "\n\n";
+}
 if (websiteReplaced) {
     report += "\n✓ Сайт dodopizza.ru заменен на переменную [country.mainWebsite]\n";
 }
