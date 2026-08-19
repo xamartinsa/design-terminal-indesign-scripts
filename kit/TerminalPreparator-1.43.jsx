@@ -66,7 +66,8 @@ function isPixelDocument(doc) {
 
 var isWebPixelDocument = isWebDocument && isPixelDocument(doc);
 
-// Функция для определения минимального PPI по площади
+// Функция для определения минимального PPI по площади в мм²
+// A4 = 210×297 = 62370 → 300; билборд 4×3 м (1:10) = 400×300 = 120000 → 256
 function getMinPPI(area) {
     if (area <= 62370) return 300;
     if (area <= 124740) return 256;
@@ -74,6 +75,20 @@ function getMinPPI(area) {
     if (area <= 499554) return 129;
     if (area <= 999949) return 92;
     return 65; // для площадей больше 999949
+}
+
+function measurementToMm(value, unit) {
+    var n = Number(value);
+    if (!isFinite(n)) return 0;
+    try {
+        if (unit === MeasurementUnits.MILLIMETERS) return n;
+        if (unit === MeasurementUnits.CENTIMETERS) return n * 10;
+        if (unit === MeasurementUnits.INCHES) return n * 25.4;
+        if (unit === MeasurementUnits.POINTS) return n * 25.4 / 72;
+        if (unit === MeasurementUnits.PICAS) return n * 25.4 / 6;
+        if (unit === MeasurementUnits.PIXELS) return n * 25.4 / 72;
+    } catch (e) {}
+    return n;
 }
 
 // Функция проверки, скрыт ли какой-либо родитель (слой, группа и т.д.)
@@ -758,11 +773,14 @@ var ppiReport = "";
 var hasPPIWarning = false;
 var hasFileSizeWarning = false;
 
-// Определяем необходимый PPI для макета по площади
-var docWidth = doc.documentPreferences.pageWidth;
-var docHeight = doc.documentPreferences.pageHeight;
-var docArea = Math.round(docWidth * docHeight);
+// Определяем необходимый PPI для макета по площади в мм² (не в единицах линейки)
+var pageWidthMm = Math.round(measurementToMm(doc.documentPreferences.pageWidth, doc.viewPreferences.horizontalMeasurementUnits) * 10) / 10;
+var pageHeightMm = Math.round(measurementToMm(doc.documentPreferences.pageHeight, doc.viewPreferences.verticalMeasurementUnits) * 10) / 10;
+var docArea = Math.round(pageWidthMm * pageHeightMm);
 var requiredPPI = isWebPixelDocument ? SCREEN_REQUIRED_PPI : getMinPPI(docArea);
+var ppiThresholdNote = isWebPixelDocument
+    ? ("PPI-порог web-макета: " + requiredPPI + " (экранный).")
+    : ("PPI-порог этого макета: " + requiredPPI + " (страница " + pageWidthMm + "×" + pageHeightMm + " мм, допуск ±15%).");
 
 // Функция проверки изображений на странице
 function checkImagesOnPage(page, pageName) {
@@ -1885,6 +1903,90 @@ if (qrKeys.length > 0) {
     }
 }
 
+// Чёрные не трогаем и не конвертируем — только предупреждение, если в макете смешаны разные «чёрные»
+function classifyBlackishColor(color) {
+    if (!color) return null;
+    try {
+        if (!color.isValid) return null;
+    } catch (e0) {
+        return null;
+    }
+    var name = "";
+    try { name = String(color.name || ""); } catch (e1) {}
+    if (name.indexOf("Registration") !== -1) return "registration";
+    try {
+        var space = color.space;
+        var v = color.colorValue;
+        if (space === ColorSpace.CMYK && v && v.length >= 4) {
+            var c = Number(v[0]), m = Number(v[1]), y = Number(v[2]), k = Number(v[3]);
+            var cmy = c + m + y;
+            if (k >= 85 && cmy <= 12) return "k100";
+            if (k >= 40 && cmy >= 60) return "rich";
+        }
+        if (space === ColorSpace.RGB && v && v.length >= 3) {
+            if (v[0] <= 20 && v[1] <= 20 && v[2] <= 20) return "rgb";
+        }
+        if (space === ColorSpace.GRAY && v && v.length >= 1) {
+            if (Number(v[0]) <= 15) return "gray";
+        }
+    } catch (e2) {}
+    if (name === "Black" || name === "[Black]") return "k100";
+    return null;
+}
+
+function noteBlackFromItem(item, kinds) {
+    try {
+        var fill = item.fillColor;
+        var k1 = classifyBlackishColor(fill);
+        if (k1) kinds[k1] = true;
+    } catch (eF) {}
+    try {
+        var stroke = item.strokeColor;
+        var k2 = classifyBlackishColor(stroke);
+        if (k2) kinds[k2] = true;
+    } catch (eS) {}
+}
+
+var mixedBlackKinds = {};
+var mixedBlackFound = false;
+var mixedBlackReport = "";
+try {
+    var blackScanLimit = 400;
+    var scanned = 0;
+    for (var pg = 0; pg < doc.pages.length && scanned < blackScanLimit; pg++) {
+        var items = doc.pages[pg].allPageItems;
+        for (var ii = 0; ii < items.length && scanned < blackScanLimit; ii++) {
+            noteBlackFromItem(items[ii], mixedBlackKinds);
+            scanned++;
+        }
+    }
+    for (var st = 0; st < doc.stories.length && scanned < blackScanLimit; st++) {
+        var story = doc.stories[st];
+        try {
+            var ranges = story.textStyleRanges;
+            var rmax = Math.min(ranges.length, 80);
+            for (var ri = 0; ri < rmax && scanned < blackScanLimit; ri++) {
+                try {
+                    var kT = classifyBlackishColor(ranges[ri].fillColor);
+                    if (kT) mixedBlackKinds[kT] = true;
+                } catch (eR) {}
+                scanned++;
+            }
+        } catch (eStory) {}
+    }
+} catch (eBlack) {}
+var mixedBlackLabels = [];
+if (mixedBlackKinds.k100) mixedBlackLabels.push("K100 / [Black]");
+if (mixedBlackKinds.rich) mixedBlackLabels.push("rich black (CMYK с цветными)");
+if (mixedBlackKinds.rgb) mixedBlackLabels.push("RGB 0-0-0");
+if (mixedBlackKinds.gray) mixedBlackLabels.push("Gray");
+if (mixedBlackKinds.registration) mixedBlackLabels.push("Registration");
+if (mixedBlackLabels.length >= 2) {
+    mixedBlackFound = true;
+    mixedBlackReport = "⚠ В макете смешаны разные чёрные: " + mixedBlackLabels.join(", ") + ". На печати они могут разъехаться. Preparator цвет не меняет — выровняйте вручную.\n\n";
+}
+
+// Линки и [terminal.renderCode] скрипт не удаляет — только отчёт. Старый 1.35 вырезал renderCode, 1.36+ нет.
 // --- ДОБАВЛЕНО: Явные предупреждения по линкам и папке Links ---
 if (missingLinks.length > 0) {
     report += "⚠ В макете есть слетевшие или отсутствующие линки:\n";
@@ -1933,9 +2035,13 @@ if (
     missingSwatchErrors.length > 0 ||
     missingFontsFound ||
     repeatedWordsFound.length > 0 ||
-    leftoverAnglePlaceholders.length > 0
+    leftoverAnglePlaceholders.length > 0 ||
+    mixedBlackFound
 ) {
     //report = "⚠ Файл не готов к Терминалу!\n\n";
+    if (mixedBlackReport) {
+        report += mixedBlackReport;
+    }
     
     if (bleedWarning) {
         report += "⚠ Отсутствуют блиды! Добавьте, если это не ценники или наклейка\n\n";
@@ -2101,6 +2207,10 @@ if (
     }
 } else {
     report = "✓ Все ок\n\n" + report;
+}
+
+if (ppiThresholdNote) {
+    report = ppiThresholdNote + "\n\n" + report;
 }
 
 // Добавляем информацию о заменах для Беларуси
