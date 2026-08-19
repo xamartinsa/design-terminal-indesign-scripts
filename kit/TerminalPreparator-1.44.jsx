@@ -1419,7 +1419,51 @@ function formatNotInLinksReport(items, expectedLinksFolder, maxExamples) {
     return lines.join("\n") + "\n";
 }
 
+function isSilentPreparatorRun() {
+    try {
+        if (app.scriptPreferences.userInteractionLevel === UserInteractionLevels.NEVER_INTERACT) {
+            return true;
+        }
+    } catch (eUil) {}
+    try {
+        if (app.scriptArgs.isDefined("silent")) {
+            var silentVal = String(app.scriptArgs.getValue("silent")).toLowerCase();
+            if (silentVal === "1" || silentVal === "true" || silentVal === "yes") {
+                return true;
+            }
+        }
+    } catch (eArg) {}
+    return false;
+}
+
+function persistPrepReport(reportText) {
+    var text = String(reportText || "");
+    try {
+        $.global.terminalPreparatorLastReport = text;
+    } catch (eG) {}
+    var outPath = "";
+    try {
+        if (app.scriptArgs.isDefined("prepReport")) {
+            outPath = String(app.scriptArgs.getValue("prepReport") || "");
+        }
+    } catch (eArg) {}
+    if (!outPath) return;
+    try {
+        var rf = File(outPath);
+        rf.encoding = "UTF-8";
+        if (rf.open("w")) {
+            rf.write(text);
+            rf.close();
+        }
+    } catch (eW) {}
+}
+
 function showReportDialog(reportText) {
+    persistPrepReport(reportText);
+    if (isSilentPreparatorRun()) {
+        try { $.writeln(reportText); } catch (eLog) {}
+        return;
+    }
     try {
         var w = new Window("dialog", "Terminal Preparator");
         w.orientation = "column";
@@ -1455,6 +1499,7 @@ function showReportDialog(reportText) {
         w.center();
         w.show();
     } catch (eWin) {
+        if (isSilentPreparatorRun()) return;
         alert(reportText);
     }
 }
