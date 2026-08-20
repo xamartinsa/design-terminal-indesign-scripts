@@ -74,6 +74,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - LegalParagraphSetup  
 - ImageCroper  
 - ImageLinkSyncer  
+- FontSyncer  
 - SaveAsInddAndIdml  
 - TerminalBelarusPreparator  
 - AutoFontSizeGrep  
