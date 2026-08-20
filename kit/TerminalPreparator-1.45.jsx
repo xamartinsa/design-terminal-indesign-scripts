@@ -963,7 +963,7 @@ var disallowedBranchVariables = [];
 var disallowedCountryVariables = [];
 var variablesOnHiddenLayers = [];
 var websiteVariablesFound = [];
-var allowedPrefixes = ["country.", "company.", "branch.", "pack.", "layout."];
+var allowedPrefixes = ["country.", "company.", "branch.", "pack.", "layout.", "terminal."];
 var systemPrefixes = ["country.", "company.", "branch."];
 
 // Список переменных, которые должны быть в квадратных скобках
@@ -1567,7 +1567,7 @@ if (linksFolderPath) {
 // --- ПРОВЕРКА QR-КОДОВ ---
 var qrErrors = [];
 var qrErrorMap = {};
-var allowedPrefixes = ["country.", "company.", "branch.", "pack.", "layout."];
+var allowedPrefixes = ["country.", "company.", "branch.", "pack.", "layout.", "terminal."];
 var invalidVarSymbols = /[ \-–_,&]/;
 
 function checkQROnPage(page) {
@@ -1598,7 +1598,7 @@ function checkQROnPage(page) {
             }
         }
         if (!hasAllowedPrefix || inner.indexOf(".") === -1) {
-            qrErrorMap[objName].push("⚠ Имя объекта QR-кода должно быть только типа country, company, branch, pack или layout и содержать точку: " + objName);
+            qrErrorMap[objName].push("⚠ Имя объекта QR-кода должно быть только типа country, company, branch, pack, layout или terminal и содержать точку: " + objName);
             $.writeln('Ошибка: неверный префикс или нет точки!');
         }
         if (invalidVarSymbols.test(inner)) {
@@ -2032,6 +2032,7 @@ if (mixedBlackLabels.length >= 2) {
 }
 
 // Линки и [terminal.renderCode] скрипт не удаляет — только отчёт. Старый 1.35 вырезал renderCode, 1.36+ нет.
+// 1.45: [terminal.renderCode] — допустимый префикс terminal., не ошибка типа переменной.
 // --- ДОБАВЛЕНО: Явные предупреждения по линкам и папке Links ---
 if (missingLinks.length > 0) {
     report += "⚠ В макете есть слетевшие или отсутствующие линки:\n";
@@ -2204,7 +2205,7 @@ if (
         report += "⚠ В названии переменных не поддерживаются пробел, дефис, тире, нижнее подчеркивание, запятые и амперсанд: " + invalidVariables.join(", ") + "\n\n";
     }
     if (invalidTypeOrDotVariables.length > 0) {
-        report += "⚠ Переменная должна быть только типа country, company, branch, pack или layout и дальше должна быть точка. Тут ошибка: " + invalidTypeOrDotVariables.join(", ") + "\n\n";
+        report += "⚠ Переменная должна быть только типа country, company, branch, pack, layout или terminal и дальше должна быть точка. Тут ошибка: " + invalidTypeOrDotVariables.join(", ") + "\n\n";
     }
     if (disallowedBranchVariables.length > 0) {
         report += "⚠ Недопустимые branch.* переменные. Разрешены только: [branch.addressShort], [branch.addressDetailsCity], [branch.addressDetailsStreetTypeDecrease], [branch.addressDetailsStreetTypeName], [branch.addressDetailsStreetName], [branch.addressDetailsHouseNumber], [branch.publicWiFiPassword], [branch.publicWiFiName], [branch.vk], [branch.instagram], [branch.workingTime].\n";
@@ -2231,7 +2232,7 @@ if (
         report += "⚠ Обнаружены неизвестные системные переменные (возможно, опечатка): " + unknownSystemVariables.join(", ") + "\n\n";
     }
     if (multipleDotsVariables.length > 0) {
-        report += "⚠ В переменной может быть только одна точка, разделяющая тип и название. У вас найдена ошибка: " + multipleDotsVariables.join(", ") + ". Переменная должна начинаться с одного из типов: country., company., branch., pack. или layout.\n\n";
+        report += "⚠ В переменной может быть только одна точка, разделяющая тип и название. У вас найдена ошибка: " + multipleDotsVariables.join(", ") + ". Переменная должна начинаться с одного из типов: country., company., branch., pack., layout. или terminal.\n\n";
     }
     if (websiteVariablesFound.length > 0) {
         var uniqueWebsites = {};
