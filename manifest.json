@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-08-20T13:48:00Z",
+    "updatedAt":  "2026-08-20T15:05:15Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -53,9 +53,15 @@
                   },
                   {
                       "id":  "LegalBarcodeInsert",
-                      "name":  "LegalBarcodeInsert-1.2.jsx",
-                      "version":  "1.2",
-                      "sha256":  "e57b295d15323e67715f83189f6e284eef8c4c1e613a7bbd26b50900daffccd3"
+                      "name":  "LegalBarcodeInsert-1.3.jsx",
+                      "version":  "1.3",
+                      "sha256":  "4973b739cd75e60742888c94ddcf583f4925faf9e4f8d921ae1a9c7ef3669e33"
+                  },
+                  {
+                      "id":  "LegalBarcodeFont",
+                      "name":  "TerminalBarcode39-Tall120-Regular.ttf",
+                      "version":  "1.3",
+                      "sha256":  "bb4905d042762ae33abf4b975e98497fb0825e3db549ddb1d0ce234ffcb1206a"
                   }
               ]
 }

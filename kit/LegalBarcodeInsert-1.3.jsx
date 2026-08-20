@@ -1,23 +1,30 @@
 ﻿#target "indesign"
 
-// LegalBarcodeInsert-1.2.jsx
+// LegalBarcodeInsert-1.3.jsx
 // Selected legal text frame: insert *[terminal.renderCode]* at the END.
-// Canon (P530/P531): after the legal, usually after [country.mainWebsite].
-// Space before * is legal font. Barcode run: Tall120, scale 100, No Break, no spaces inside.
-// If barcode already exists but not at the end — move it. No Start/End dialog.
+// Always copies TerminalBarcode39-Tall120-Regular.ttf into Document fonts
+// (sidecar next to this .jsx, shipped in the kit).
+// Canon: after the legal, Tall120, scale 100, No Break. No Regular fallback.
 // UI strings are \uXXXX: Windows InDesign reads JSX as ANSI (CP1251), not UTF-8.
 
 (function () {
-    var SCRIPT_VERSION = "1.2";
+    var SCRIPT_VERSION = "1.3";
     var BARCODE_TEXT = "*[terminal.renderCode]*";
-    var FONT_NAMES = [
-        "Terminal Barcode 39 Tall120",
-        "Terminal Barcode 39"
-    ];
+    var FONT_FAMILY = "Terminal Barcode 39 Tall120";
+    var FONT_FILE_NAME = "TerminalBarcode39-Tall120-Regular.ttf";
     var UI = {
+        needSave:
+            "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 (.indd).\n" +
+            "\u0428\u0440\u0438\u0444\u0442 \u043a\u043b\u0430\u0434\u0451\u0442\u0441\u044f \u0432 Document fonts \u0440\u044f\u0434\u043e\u043c \u0441 \u0444\u0430\u0439\u043b\u043e\u043c.",
+        noSidecar:
+            "\u0420\u044f\u0434\u043e\u043c \u0441\u043e \u0441\u043a\u0440\u0438\u043f\u0442\u043e\u043c \u043d\u0435\u0442 " + FONT_FILE_NAME + ".\n" +
+            "\u0417\u0430\u043f\u0443\u0441\u0442\u0438 Update-DT-Scripts \u0438 \u0431\u0435\u0440\u0438 LegalBarcodeInsert \u0438\u0437 Design Terminal Git.",
+        copiedReopen:
+            "\u0421\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043b Tall120 \u0432 Document fonts.\n" +
+            "\u0417\u0430\u043a\u0440\u043e\u0439 \u0444\u0430\u0439\u043b \u0438 \u043e\u0442\u043a\u0440\u043e\u0439 \u0441\u043d\u043e\u0432\u0430, \u043f\u043e\u0442\u043e\u043c \u0437\u0430\u043f\u0443\u0441\u0442\u0438 \u0441\u043a\u0440\u0438\u043f\u0442 \u0435\u0449\u0451 \u0440\u0430\u0437.",
         noFont:
             "\u041d\u0435\u0442 \u0448\u0440\u0438\u0444\u0442\u0430 Terminal Barcode 39 Tall120.\n" +
-            "\u041f\u043e\u043b\u043e\u0436\u0438 TerminalBarcode39-Tall120-Regular.ttf \u0432 Document fonts \u0438 \u043f\u0435\u0440\u0435\u043e\u0442\u043a\u0440\u043e\u0439 \u0444\u0430\u0439\u043b.",
+            "\u041f\u043e\u043b\u043e\u0436\u0438 " + FONT_FILE_NAME + " \u0432 Document fonts \u0438 \u043f\u0435\u0440\u0435\u043e\u0442\u043a\u0440\u043e\u0439 \u0444\u0430\u0439\u043b.",
         alreadyOk:
             " \u2014 \u0431\u0430\u0440\u043a\u043e\u0434 \u0443\u0436\u0435 \u0432 \u043a\u043e\u043d\u0446\u0435. \u041f\u043e\u043f\u0440\u0430\u0432\u0438\u043b \u0448\u0440\u0438\u0444\u0442 / scale / No Break.",
         moved:
@@ -29,6 +36,79 @@
     if (app.documents.length === 0) {
         alert("Open a document first.");
         return;
+    }
+
+    function scriptFolder() {
+        try {
+            return File($.fileName).parent;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function fontIsInstalled() {
+        var names = [FONT_FAMILY, FONT_FAMILY + "\tRegular"];
+        var i;
+        for (i = 0; i < names.length; i++) {
+            try {
+                var f = app.fonts.itemByName(names[i]);
+                if (f.isValid && f.status === FontStatus.INSTALLED) {
+                    return names[i];
+                }
+            } catch (e1) {}
+        }
+        return null;
+    }
+
+    function ensureTall120File() {
+        var doc = app.activeDocument;
+        var saved = false;
+        try {
+            saved = doc.saved;
+        } catch (eSaved) {
+            saved = false;
+        }
+        if (!saved) {
+            alert(UI.needSave);
+            return false;
+        }
+
+        var folder = scriptFolder();
+        if (!folder) {
+            alert(UI.noSidecar);
+            return false;
+        }
+        var src = new File(folder.fsName + "/" + FONT_FILE_NAME);
+        if (!src.exists) {
+            alert(UI.noSidecar);
+            return false;
+        }
+
+        var destFolder;
+        try {
+            destFolder = new Folder(doc.filePath.fsName + "/Document fonts");
+        } catch (ePath) {
+            alert(UI.needSave);
+            return false;
+        }
+        if (!destFolder.exists) {
+            destFolder.create();
+        }
+        var dest = new File(destFolder.fsName + "/" + FONT_FILE_NAME);
+        try {
+            if (dest.exists) {
+                dest.remove();
+            }
+        } catch (eRm) {}
+        src.copy(dest);
+        try {
+            app.fonts.length;
+        } catch (eLen) {}
+        if (!dest.exists) {
+            alert(UI.noFont);
+            return false;
+        }
+        return true;
     }
 
     function resolveTextFrame(selectionItem) {
@@ -65,25 +145,6 @@
         app.changeGrepPreferences = NothingEnum.nothing;
     }
 
-    function findBarcodeFont() {
-        var i;
-        for (i = 0; i < FONT_NAMES.length; i++) {
-            try {
-                var f = app.fonts.itemByName(FONT_NAMES[i]);
-                if (f.isValid) {
-                    return FONT_NAMES[i];
-                }
-            } catch (e1) {}
-            try {
-                var f2 = app.fonts.item(FONT_NAMES[i]);
-                if (f2.isValid) {
-                    return FONT_NAMES[i];
-                }
-            } catch (e2) {}
-        }
-        return null;
-    }
-
     function applyBarcodeFormat(tx, fontName) {
         try {
             tx.verticalScale = 100;
@@ -101,7 +162,7 @@
             } catch (eSt) {}
         } catch (eFont) {
             try {
-                tx.appliedFont = fontName;
+                tx.appliedFont = FONT_FAMILY;
             } catch (eFont2) {}
         }
     }
@@ -187,9 +248,13 @@
         return;
     }
 
-    var fontName = findBarcodeFont();
+    var hadFont = !!fontIsInstalled();
+    if (!ensureTall120File()) {
+        return;
+    }
+    var fontName = fontIsInstalled();
     if (!fontName) {
-        alert(UI.noFont);
+        alert(hadFont ? UI.noFont : UI.copiedReopen);
         return;
     }
 

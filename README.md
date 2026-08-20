@@ -78,7 +78,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - SaveAsInddAndIdml  
 - TerminalBelarusPreparator  
 - AutoFontSizeGrep  
-- LegalBarcodeInsert  
+- LegalBarcodeInsert (+ шрифт Tall120 в ту же папку) 
 
 ## Если апдейтер уже открылся, но упал с ошибкой
 
