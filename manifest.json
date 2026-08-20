@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-08-20T13:44:53Z",
+    "updatedAt":  "2026-08-20T13:48:00Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -53,9 +53,9 @@
                   },
                   {
                       "id":  "LegalBarcodeInsert",
-                      "name":  "LegalBarcodeInsert-1.1.jsx",
-                      "version":  "1.1",
-                      "sha256":  "2f1de21e69cfbc264f53d9dc7f15d8fe2e649c1d93e56feba44095d6095c8cf3"
+                      "name":  "LegalBarcodeInsert-1.2.jsx",
+                      "version":  "1.2",
+                      "sha256":  "e57b295d15323e67715f83189f6e284eef8c4c1e613a7bbd26b50900daffccd3"
                   }
               ]
 }

@@ -1,34 +1,29 @@
 ﻿#target "indesign"
 
-// LegalBarcodeInsert-1.1.jsx
-// Selected legal text frame: insert or normalize *[terminal.renderCode]* barcode.
-// Canon (P530/P531 slices): space in legal font, then barcode run, usually at the end.
-// Barcode run: Tall120, scale 100, No Break, no spaces inside.
+// LegalBarcodeInsert-1.2.jsx
+// Selected legal text frame: insert *[terminal.renderCode]* at the END.
+// Canon (P530/P531): after the legal, usually after [country.mainWebsite].
+// Space before * is legal font. Barcode run: Tall120, scale 100, No Break, no spaces inside.
+// If barcode already exists but not at the end — move it. No Start/End dialog.
 // UI strings are \uXXXX: Windows InDesign reads JSX as ANSI (CP1251), not UTF-8.
 
 (function () {
-    var SCRIPT_VERSION = "1.1";
+    var SCRIPT_VERSION = "1.2";
     var BARCODE_TEXT = "*[terminal.renderCode]*";
     var FONT_NAMES = [
         "Terminal Barcode 39 Tall120",
         "Terminal Barcode 39"
     ];
-    // Visible UI — ASCII + \uXXXX only (no raw UTF-8 in string literals).
     var UI = {
         noFont:
             "\u041d\u0435\u0442 \u0448\u0440\u0438\u0444\u0442\u0430 Terminal Barcode 39 Tall120.\n" +
             "\u041f\u043e\u043b\u043e\u0436\u0438 TerminalBarcode39-Tall120-Regular.ttf \u0432 Document fonts \u0438 \u043f\u0435\u0440\u0435\u043e\u0442\u043a\u0440\u043e\u0439 \u0444\u0430\u0439\u043b.",
-        alreadyPrefix: " \u2014 \u0431\u0430\u0440\u043a\u043e\u0434 \u0443\u0436\u0435 \u0431\u044b\u043b (",
-        alreadySuffix: "). \u041f\u043e\u043f\u0440\u0430\u0432\u0438\u043b \u0448\u0440\u0438\u0444\u0442 / scale / No Break.",
-        dialogBody:
-            "\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c *[terminal.renderCode]* (Tall120, No Break).\n" +
-            "\u041f\u0440\u043e\u0431\u0435\u043b \u0440\u044f\u0434\u043e\u043c \u2014 \u0448\u0440\u0438\u0444\u0442 \u043b\u0438\u0433\u0430\u043b\u0430.",
-        toStart: "\u0412 \u043d\u0430\u0447\u0430\u043b\u043e",
-        toEnd: "\u0412 \u043a\u043e\u043d\u0435\u0446",
-        cancel: "\u041e\u0442\u043c\u0435\u043d\u0430",
-        insertedPrefix: " \u2014 \u0432\u0441\u0442\u0430\u0432\u0438\u043b \u0432 ",
-        startWord: "\u043d\u0430\u0447\u0430\u043b\u043e",
-        endWord: "\u043a\u043e\u043d\u0435\u0446"
+        alreadyOk:
+            " \u2014 \u0431\u0430\u0440\u043a\u043e\u0434 \u0443\u0436\u0435 \u0432 \u043a\u043e\u043d\u0446\u0435. \u041f\u043e\u043f\u0440\u0430\u0432\u0438\u043b \u0448\u0440\u0438\u0444\u0442 / scale / No Break.",
+        moved:
+            " \u2014 \u043f\u0435\u0440\u0435\u043d\u0451\u0441 \u0432 \u043a\u043e\u043d\u0435\u0446 (Tall120, No Break).",
+        inserted:
+            " \u2014 \u0432\u0441\u0442\u0430\u0432\u0438\u043b \u0432 \u043a\u043e\u043d\u0435\u0446 (Tall120, No Break)."
     };
 
     if (app.documents.length === 0) {
@@ -132,26 +127,52 @@
         return i;
     }
 
-    function insertBarcode(textFrame, atStart, fontName) {
+    function isSpaceChar(ch) {
+        return ch === " " || ch === "\u00A0";
+    }
+
+    function barcodeIsAtEnd(foundItem, lastVisible) {
+        try {
+            var endIdx = foundItem.index + foundItem.characters.length - 1;
+            return endIdx >= lastVisible;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function removeBarcodeRuns(textFrame) {
+        var found = findExisting(textFrame);
+        var i;
+        for (i = found.length - 1; i >= 0; i--) {
+            try {
+                var story = found[i].parentStory;
+                var startIdx = found[i].index;
+                var endIdx = startIdx + found[i].characters.length - 1;
+                try {
+                    if (endIdx + 1 < story.characters.length && isSpaceChar(story.characters[endIdx + 1].contents)) {
+                        endIdx += 1;
+                    }
+                } catch (eA) {}
+                try {
+                    if (startIdx > 0 && isSpaceChar(story.characters[startIdx - 1].contents)) {
+                        startIdx -= 1;
+                    }
+                } catch (eB) {}
+                story.characters.itemByRange(startIdx, endIdx).contents = "";
+            } catch (eDel) {}
+        }
+    }
+
+    function insertBarcodeAtEnd(textFrame, fontName) {
         var text = textFrame.texts[0];
         var contents = String(text.contents);
         var barcodeLen = BARCODE_TEXT.length;
-        var start;
-
-        if (atStart) {
-            var needSpaceAfter = contents.length > 0 && !/^[\s\r\n]/.test(contents.charAt(0));
-            var chunk = BARCODE_TEXT + (needSpaceAfter ? " " : "");
-            text.insertionPoints[0].contents = chunk;
-            start = 0;
-        } else {
-            var last = lastVisibleIndex(contents);
-            var ip = last + 1;
-            var needSpaceBefore = last >= 0 && contents.charAt(last) !== " " && contents.charAt(last) !== "\u00A0";
-            var prefix = needSpaceBefore ? " " : "";
-            text.insertionPoints[ip].contents = prefix + BARCODE_TEXT;
-            start = ip + prefix.length;
-        }
-
+        var last = lastVisibleIndex(contents);
+        var ip = last + 1;
+        var needSpaceBefore = last >= 0 && contents.charAt(last) !== " " && contents.charAt(last) !== "\u00A0";
+        var prefix = needSpaceBefore ? " " : "";
+        text.insertionPoints[ip].contents = prefix + BARCODE_TEXT;
+        var start = ip + prefix.length;
         applyBarcodeFormat(text.characters.itemByRange(start, start + barcodeLen - 1), fontName);
     }
 
@@ -173,61 +194,30 @@
     }
 
     var existing = findExisting(textFrame);
+    var contents = String(textFrame.texts[0].contents);
+    var last = lastVisibleIndex(contents);
+    var alreadyAtEnd = existing.length === 1 && barcodeIsAtEnd(existing[0], last);
+
+    if (alreadyAtEnd) {
+        try {
+            var s = String(existing[0].contents);
+            var stripped = s.replace(/^\s+/, "").replace(/\s+$/, "");
+            if (stripped !== s) {
+                existing[0].contents = stripped;
+            }
+        } catch (eContents) {}
+        applyBarcodeFormat(existing[0], fontName);
+        alert("LegalBarcodeInsert " + SCRIPT_VERSION + UI.alreadyOk);
+        return;
+    }
+
     if (existing.length > 0) {
-        var i;
-        for (i = 0; i < existing.length; i++) {
-            try {
-                var s = String(existing[i].contents);
-                var stripped = s.replace(/^\s+/, "").replace(/\s+$/, "");
-                if (stripped !== s) {
-                    existing[i].contents = stripped;
-                }
-            } catch (eContents) {}
-            applyBarcodeFormat(existing[i], fontName);
-        }
-        alert(
-            "LegalBarcodeInsert " + SCRIPT_VERSION +
-            UI.alreadyPrefix + existing.length + UI.alreadySuffix
-        );
+        removeBarcodeRuns(textFrame);
+        insertBarcodeAtEnd(textFrame, fontName);
+        alert("LegalBarcodeInsert " + SCRIPT_VERSION + UI.moved);
         return;
     }
 
-    var win = new Window("dialog", "Legal barcode " + SCRIPT_VERSION);
-    win.orientation = "column";
-    win.alignChildren = ["fill", "top"];
-    win.add(
-        "statictext",
-        undefined,
-        UI.dialogBody,
-        { multiline: true }
-    );
-    var buttons = win.add("group");
-    buttons.alignment = "right";
-    var btnStart = buttons.add("button", undefined, UI.toStart);
-    var btnEnd = buttons.add("button", undefined, UI.toEnd);
-    var btnCancel = buttons.add("button", undefined, UI.cancel);
-    var choice = null;
-    btnStart.onClick = function () {
-        choice = "start";
-        win.close(1);
-    };
-    btnEnd.onClick = function () {
-        choice = "end";
-        win.close(1);
-    };
-    btnCancel.onClick = function () {
-        win.close(0);
-    };
-
-    if (win.show() !== 1 || !choice) {
-        return;
-    }
-
-    insertBarcode(textFrame, choice === "start", fontName);
-    alert(
-        "LegalBarcodeInsert " + SCRIPT_VERSION +
-        UI.insertedPrefix +
-        (choice === "start" ? UI.startWord : UI.endWord) +
-        "."
-    );
+    insertBarcodeAtEnd(textFrame, fontName);
+    alert("LegalBarcodeInsert " + SCRIPT_VERSION + UI.inserted);
 })();
