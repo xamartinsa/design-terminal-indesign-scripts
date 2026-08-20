@@ -1,17 +1,35 @@
-#target "indesign"
+﻿#target "indesign"
 
-// LegalBarcodeInsert-1.0.jsx
+// LegalBarcodeInsert-1.1.jsx
 // Selected legal text frame: insert or normalize *[terminal.renderCode]* barcode.
 // Canon (P530/P531 slices): space in legal font, then barcode run, usually at the end.
 // Barcode run: Tall120, scale 100, No Break, no spaces inside.
+// UI strings are \uXXXX: Windows InDesign reads JSX as ANSI (CP1251), not UTF-8.
 
 (function () {
-    var SCRIPT_VERSION = "1.0";
+    var SCRIPT_VERSION = "1.1";
     var BARCODE_TEXT = "*[terminal.renderCode]*";
     var FONT_NAMES = [
         "Terminal Barcode 39 Tall120",
         "Terminal Barcode 39"
     ];
+    // Visible UI — ASCII + \uXXXX only (no raw UTF-8 in string literals).
+    var UI = {
+        noFont:
+            "\u041d\u0435\u0442 \u0448\u0440\u0438\u0444\u0442\u0430 Terminal Barcode 39 Tall120.\n" +
+            "\u041f\u043e\u043b\u043e\u0436\u0438 TerminalBarcode39-Tall120-Regular.ttf \u0432 Document fonts \u0438 \u043f\u0435\u0440\u0435\u043e\u0442\u043a\u0440\u043e\u0439 \u0444\u0430\u0439\u043b.",
+        alreadyPrefix: " \u2014 \u0431\u0430\u0440\u043a\u043e\u0434 \u0443\u0436\u0435 \u0431\u044b\u043b (",
+        alreadySuffix: "). \u041f\u043e\u043f\u0440\u0430\u0432\u0438\u043b \u0448\u0440\u0438\u0444\u0442 / scale / No Break.",
+        dialogBody:
+            "\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044c *[terminal.renderCode]* (Tall120, No Break).\n" +
+            "\u041f\u0440\u043e\u0431\u0435\u043b \u0440\u044f\u0434\u043e\u043c \u2014 \u0448\u0440\u0438\u0444\u0442 \u043b\u0438\u0433\u0430\u043b\u0430.",
+        toStart: "\u0412 \u043d\u0430\u0447\u0430\u043b\u043e",
+        toEnd: "\u0412 \u043a\u043e\u043d\u0435\u0446",
+        cancel: "\u041e\u0442\u043c\u0435\u043d\u0430",
+        insertedPrefix: " \u2014 \u0432\u0441\u0442\u0430\u0432\u0438\u043b \u0432 ",
+        startWord: "\u043d\u0430\u0447\u0430\u043b\u043e",
+        endWord: "\u043a\u043e\u043d\u0435\u0446"
+    };
 
     if (app.documents.length === 0) {
         alert("Open a document first.");
@@ -150,10 +168,7 @@
 
     var fontName = findBarcodeFont();
     if (!fontName) {
-        alert(
-            "Нет шрифта Terminal Barcode 39 Tall120.\n" +
-            "Положи TerminalBarcode39-Tall120-Regular.ttf в Document fonts и переоткрой файл."
-        );
+        alert(UI.noFont);
         return;
     }
 
@@ -172,7 +187,7 @@
         }
         alert(
             "LegalBarcodeInsert " + SCRIPT_VERSION +
-            " — баркод уже был (" + existing.length + "). Поправил шрифт / scale / No Break."
+            UI.alreadyPrefix + existing.length + UI.alreadySuffix
         );
         return;
     }
@@ -183,14 +198,14 @@
     win.add(
         "statictext",
         undefined,
-        "Вставить *[terminal.renderCode]* (Tall120, No Break).\nПробел рядом — шрифт лигала.",
+        UI.dialogBody,
         { multiline: true }
     );
     var buttons = win.add("group");
     buttons.alignment = "right";
-    var btnStart = buttons.add("button", undefined, "В начало");
-    var btnEnd = buttons.add("button", undefined, "В конец");
-    var btnCancel = buttons.add("button", undefined, "Отмена");
+    var btnStart = buttons.add("button", undefined, UI.toStart);
+    var btnEnd = buttons.add("button", undefined, UI.toEnd);
+    var btnCancel = buttons.add("button", undefined, UI.cancel);
     var choice = null;
     btnStart.onClick = function () {
         choice = "start";
@@ -209,5 +224,10 @@
     }
 
     insertBarcode(textFrame, choice === "start", fontName);
-    alert("LegalBarcodeInsert " + SCRIPT_VERSION + " — вставил в " + (choice === "start" ? "начало" : "конец") + ".");
+    alert(
+        "LegalBarcodeInsert " + SCRIPT_VERSION +
+        UI.insertedPrefix +
+        (choice === "start" ? UI.startWord : UI.endWord) +
+        "."
+    );
 })();

@@ -1,4 +1,4 @@
-#target "indesign"
+﻿#target "indesign"
 
 // Получаем путь к папке Links
 var doc = app.activeDocument;

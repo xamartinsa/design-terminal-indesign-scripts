@@ -1,4 +1,4 @@
-#target "indesign"
+﻿#target "indesign"
 
 // FontSyncer-1.0.jsx
 // Как ImageLinkSyncer, но для шрифтов: копирует используемые в Document fonts,

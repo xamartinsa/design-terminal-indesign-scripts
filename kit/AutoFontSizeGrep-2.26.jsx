@@ -1,4 +1,4 @@
-// AutoFontSizeGrep-2.26.jsx
+﻿// AutoFontSizeGrep-2.26.jsx
 // Локальные GREP на выбранный абзац. Символы: ^.{N,}
 // Без памяти на фрейме.
 // 2.26:

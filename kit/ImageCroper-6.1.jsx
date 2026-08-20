@@ -1,4 +1,4 @@
-#target "indesign"
+﻿#target "indesign"
 
 // ImageCroper 6.1
 // Кроп выбранного image-фрейма через Photoshop (исходные пиксели).

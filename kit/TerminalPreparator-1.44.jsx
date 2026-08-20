@@ -1,4 +1,4 @@
-var doc = app.activeDocument;
+﻿var doc = app.activeDocument;
 
 // --- СНЯТИЕ ЗАМКОВ СО ВСЕХ ОБЪЕКТОВ И СЛОЕВ ---
 // Снимаем замки со всех слоев

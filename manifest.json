@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-08-20T11:02:00Z",
+    "updatedAt":  "2026-08-20T13:44:53Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -7,55 +7,55 @@
                       "id":  "TerminalPreparator",
                       "name":  "TerminalPreparator-1.44.jsx",
                       "version":  "1.44",
-                      "sha256":  "8bcc6cd5c597ab9bfef1219ac3b47ccbe7da9bc423a1162c3ff946b87f8b748a"
+                      "sha256":  "c120fabd3efaa9386f71cb63c43529565cf60f76f5bc8c8e0e54ae23f04396b4"
                   },
                   {
                       "id":  "LegalParagraphSetup",
                       "name":  "LegalParagraphSetup-1.12.jsx",
                       "version":  "1.12",
-                      "sha256":  "fac59141eb841379c97d7ee5efb015df98d6722b730b080320700f44f2db1c0e"
+                      "sha256":  "96af747340ae436678581ae5c81b08d6c51b7d096209ef76f827f828d5f53dc0"
                   },
                   {
                       "id":  "ImageCroper",
                       "name":  "ImageCroper-6.1.jsx",
                       "version":  "6.1",
-                      "sha256":  "44a3f1e4059d2d04cdca496e47f0f62879fb74b47211fa2398b40e873b392294"
+                      "sha256":  "d62b94c205e6ba5d415009350bb6709286e38c5475236394e487248d84a793fe"
                   },
                   {
                       "id":  "ImageLinkSyncer",
                       "name":  "ImageLinkSyncer-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "bbc2573f0ce75e01b10f86f64702c5a84f4e311b15cf7b490c1cd62b24af1780"
+                      "sha256":  "49171fce90827fc5f596efe93f337b02127c5b26576e772b0fa89467b0de14c1"
                   },
                   {
                       "id":  "FontSyncer",
                       "name":  "FontSyncer-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "df40adc38916289d9ebf075307792ec651be4d0d038faea9beb457a238d2e102"
+                      "sha256":  "3b4723d7d852810e0cc4e785b7c52078b59e31fbd849281dfbc995a1f68cd835"
                   },
                   {
                       "id":  "SaveAsInddAndIdml",
                       "name":  "SaveAsInddAndIdml-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "afedb3316316e9314e96b7dfb6e099aa99f42f5b22e393c880015fd30ff02739"
+                      "sha256":  "20c94c96807e591810849d7f641573e78097abd27c053309754a7ddf64dd3593"
                   },
                   {
                       "id":  "TerminalBelarusPreparator",
                       "name":  "TerminalBelarusPreparator.jsx",
                       "version":  "1.0",
-                      "sha256":  "4d853c487a4020afd0a046674cc53814ab7fc729c2b8fdfce758a5b20ff337ca"
+                      "sha256":  "7e9141f799d226424a8f08c03f6326e1a5bd27c764f94c538aeaa19b2c87775f"
                   },
                   {
                       "id":  "AutoFontSizeGrep",
                       "name":  "AutoFontSizeGrep-2.26.jsx",
                       "version":  "2.26",
-                      "sha256":  "e04be0f29519239b04b3a043c58f3b385a9951d401fd159b10e5ad1ad08e6b4d"
+                      "sha256":  "6879198b9dbc3b0d1e37ecf05884eb509fc6789f4979c04ab56daab540fd4ec6"
                   },
                   {
                       "id":  "LegalBarcodeInsert",
-                      "name":  "LegalBarcodeInsert-1.0.jsx",
-                      "version":  "1.0",
-                      "sha256":  "39c630948a1730004f80da11aecfb7f5ff5e89b193d84852fecbdf0f42bff30b"
+                      "name":  "LegalBarcodeInsert-1.1.jsx",
+                      "version":  "1.1",
+                      "sha256":  "2f1de21e69cfbc264f53d9dc7f15d8fe2e649c1d93e56feba44095d6095c8cf3"
                   }
               ]
 }

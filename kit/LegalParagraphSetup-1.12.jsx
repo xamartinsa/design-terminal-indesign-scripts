@@ -1,4 +1,4 @@
-// LegalParagraphSetup-1.12.jsx
+﻿// LegalParagraphSetup-1.12.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification

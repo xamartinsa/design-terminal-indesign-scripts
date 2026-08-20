@@ -1,4 +1,4 @@
-#target "indesign"
+﻿#target "indesign"
 
 var doc = app.activeDocument;
 
