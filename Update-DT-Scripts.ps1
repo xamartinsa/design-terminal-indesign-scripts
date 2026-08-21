@@ -90,6 +90,10 @@ try {
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
       Copy-Item -LiteralPath $dl -Destination $dest -Force
     }
+    foreach ($staleName in @('ImageLinkSyncer-*.jsx', 'FontSyncer-*.jsx')) {
+      Get-ChildItem -LiteralPath $target -Filter $staleName -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+    }
     $staleArchive = Join-Path $target '_old'
     if (Test-Path -LiteralPath $staleArchive) {
       Remove-Item -LiteralPath $staleArchive -Recurse -Force

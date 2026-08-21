@@ -1300,6 +1300,8 @@ var linksFolderPath = null;
 var linksFolderOkComparisons = [];
 var comparisonDetails = [];
 var hasWrongLinks = false;
+// 1.46: временно не ругаемся «не из Links» — Preparator часто гоняют до Package.
+var REPORT_LINKS_NOT_IN_FOLDER = false;
 
 // Проверка на слетевшие или недоступные линки
 for (var i = 0; i < doc.links.length; i++) {
@@ -2033,6 +2035,7 @@ if (mixedBlackLabels.length >= 2) {
 
 // Линки и [terminal.renderCode] скрипт не удаляет — только отчёт. Старый 1.35 вырезал renderCode, 1.36+ нет.
 // 1.45: [terminal.renderCode] — допустимый префикс terminal., не ошибка типа переменной.
+// 1.46: «не из Links» в отчёт не кладём (REPORT_LINKS_NOT_IN_FOLDER).
 // --- ДОБАВЛЕНО: Явные предупреждения по линкам и папке Links ---
 if (missingLinks.length > 0) {
     report += "⚠ В макете есть слетевшие или отсутствующие линки:\n";
@@ -2042,7 +2045,7 @@ if (missingLinks.length > 0) {
     report += "\n";
 }
 
-if (notInLinksFolder.length > 0) {
+if (REPORT_LINKS_NOT_IN_FOLDER && notInLinksFolder.length > 0) {
     report += formatNotInLinksReport(notInLinksFolder, normalizedLinksFolder, 5);
     report += "\n";
 }
@@ -2073,7 +2076,7 @@ if (
     systemVariablesFixedCount > 0 ||
     variablesOnHiddenLayers.length > 0 ||
     missingLinks.length > 0 ||
-    notInLinksFolder.length > 0 ||
+    (REPORT_LINKS_NOT_IN_FOLDER && notInLinksFolder.length > 0) ||
     hasWrongLinks ||
     websiteVariablesFound.length > 0 ||
     qrNameMistakes.length > 0 ||

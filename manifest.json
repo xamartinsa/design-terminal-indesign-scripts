@@ -1,13 +1,13 @@
 {
-    "updatedAt":  "2026-08-20T15:10:49Z",
+    "updatedAt":  "2026-08-21T13:45:10Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
-                      "name":  "TerminalPreparator-1.45.jsx",
-                      "version":  "1.45",
-                      "sha256":  "5bc9f8654bf09aa8566710b102f62488a55bee21272c2ddd281e7312c6771d81"
+                      "name":  "TerminalPreparator-1.46.jsx",
+                      "version":  "1.46",
+                      "sha256":  "2336b5e97cf7a1c5e5727add67a7638cf53c06b8a3b37d9704359be78cc5aa32"
                   },
                   {
                       "id":  "LegalParagraphSetup",
@@ -22,16 +22,10 @@
                       "sha256":  "d62b94c205e6ba5d415009350bb6709286e38c5475236394e487248d84a793fe"
                   },
                   {
-                      "id":  "ImageLinkSyncer",
-                      "name":  "ImageLinkSyncer-1.0.jsx",
+                      "id":  "MiniPackage",
+                      "name":  "MiniPackage-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "49171fce90827fc5f596efe93f337b02127c5b26576e772b0fa89467b0de14c1"
-                  },
-                  {
-                      "id":  "FontSyncer",
-                      "name":  "FontSyncer-1.0.jsx",
-                      "version":  "1.0",
-                      "sha256":  "3b4723d7d852810e0cc4e785b7c52078b59e31fbd849281dfbc995a1f68cd835"
+                      "sha256":  "f7152f67b5628c31a58435f130c84b52ebf56603e1fa8cb7747731652b3133fa"
                   },
                   {
                       "id":  "SaveAsInddAndIdml",
