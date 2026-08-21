@@ -158,7 +158,7 @@ for panel in "${TARGETS[@]}"; do
     find "$target" -maxdepth 1 -type f -name "${id}-*.jsx" ! -name "$name" -delete 2>/dev/null || true
     cp -f "$TMP/$name" "$target/$name"
   done < <(tail -n +2 "$MAP_FILE")
-  find "$target" -maxdepth 1 -type f \( -name 'ImageLinkSyncer-*.jsx' -o -name 'FontSyncer-*.jsx' \) -delete 2>/dev/null || true
+  find "$target" -maxdepth 1 -type f \( -name 'ImageLinkSyncer-*.jsx' -o -name 'FontSyncer-*.jsx' -o -name 'MiniPackage-*.jsx' -o -name 'TerminalSyncer-*.jsx' \) -delete 2>/dev/null || true
   [[ -d "$target/_old" ]] && rm -rf "$target/_old"
   for legacy in "DT Scripts GitHub Auto"; do
     if [[ "$legacy" != "$SUBDIR" && -d "$panel/$legacy" ]]; then

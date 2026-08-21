@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-08-21T13:45:10Z",
+    "updatedAt":  "2026-08-21T14:55:26Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -22,10 +22,10 @@
                       "sha256":  "d62b94c205e6ba5d415009350bb6709286e38c5475236394e487248d84a793fe"
                   },
                   {
-                      "id":  "MiniPackage",
-                      "name":  "MiniPackage-1.0.jsx",
+                      "id":  "ImageAndFontSyncer",
+                      "name":  "ImageAndFontSyncer-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "f7152f67b5628c31a58435f130c84b52ebf56603e1fa8cb7747731652b3133fa"
+                      "sha256":  "9968a163e5b9511b6f60db461dc1b00b8a968cab556204d37c2f0c6e607e2275"
                   },
                   {
                       "id":  "SaveAsInddAndIdml",

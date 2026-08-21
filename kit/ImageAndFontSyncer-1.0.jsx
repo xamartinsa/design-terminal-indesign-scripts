@@ -1,7 +1,7 @@
 ﻿#target "indesign"
 
-// MiniPackage-1.0.jsx
-// Мини-Package: картинки в Links + шрифты в Document fonts рядом с INDD.
+// ImageAndFontSyncer-1.0.jsx
+// Синкер: картинки в Links + шрифты в Document fonts рядом с INDD.
 // Relink картинкам; шрифтам relink не нужен — InDesign берёт по имени.
 
 (function () {
