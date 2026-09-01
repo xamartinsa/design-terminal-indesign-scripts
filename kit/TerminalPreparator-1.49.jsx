@@ -1471,7 +1471,8 @@ function showReportDialog(reportText) {
         w.spacing = 8;
 
         // 1.47: уже и ниже, высота по числу строк.
-        // 1.48: scrolling: true в ScriptUI всегда рисует скроллбар — включаем только когда текст выше окна.
+        // 1.48: короткий отчёт — statictext (без скроллбара).
+        // 1.49: ещё уже, чтобы окно было скорее вертикальным.
 
         var lineCount = 1;
         try {
@@ -1480,18 +1481,31 @@ function showReportDialog(reportText) {
 
         var lineH = 18;
         var padH = 28;
-        var neededH = padH + lineCount * lineH;
-        var boxW = 500;
-        var maxH = 360;
+        var boxW = 340;
+        var maxH = 420;
         try {
             if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
                 var scr = $.screens[0];
                 var scrH = scr.bottom - scr.top;
                 var scrW = scr.right - scr.left;
-                if (scrW > 0) boxW = Math.min(520, Math.max(420, Math.floor(scrW * 0.36)));
-                if (scrH > 0) maxH = Math.min(360, Math.floor(scrH * 0.38));
+                if (scrW > 0) boxW = Math.min(360, Math.max(300, Math.floor(scrW * 0.22)));
+                if (scrH > 0) maxH = Math.min(420, Math.floor(scrH * 0.42));
             }
         } catch (eScr) {}
+
+        var visualLines = lineCount;
+        try {
+            var charsPerLine = Math.max(28, Math.floor(boxW / 7));
+            var rawLines = String(reportText).split("\n");
+            visualLines = 0;
+            for (var li = 0; li < rawLines.length; li++) {
+                var lineLen = rawLines[li].length;
+                visualLines += lineLen <= 0 ? 1 : Math.max(1, Math.ceil(lineLen / charsPerLine));
+            }
+        } catch (eVl) {
+            visualLines = lineCount;
+        }
+        var neededH = padH + visualLines * lineH;
 
         var needsScroll = neededH > maxH;
         var boxH = needsScroll ? maxH : Math.max(90, neededH);
