@@ -1459,14 +1459,13 @@ function persistPrepReport(reportText) {
     } catch (eW) {}
 }
 
-function getDancingPersonFrames() {
+function getDtLogoFrames() {
     return [
-        " \\o/ \n  |  \n / \\ ",
-        "  o  \n /|\\ \n / \\ ",
-        "  o  \n <|  \n / \\ ",
-        "  o  \n  |> \n / \\ ",
-        " >o  \n  |\\ \n / \\ ",
-        "  o< \n /|  \n / \\ "
+        "   ___     ____\n  | o \\      |\n  |   |      |\n  |___/      |",
+        "   ___     ____\n  | - \\      |\n  |   |      |\n  |___/      |",
+        "  ___      ____\n | o \\       |\n |   |       |\n |___/       |",
+        "    ___    ____\n   | o \\     |\n   |   |     |\n   |___/     |",
+        "   ___     ____\n  | * \\      |\n  |   |      |\n  |___/      |"
     ];
 }
 
@@ -1498,7 +1497,7 @@ function stopPrepDance() {
 function showAllOkDanceDialog(reportText) {
     stopPrepDance();
 
-    var frames = getDancingPersonFrames();
+    var frames = getDtLogoFrames();
     var boxW = 340;
     try {
         if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
@@ -1520,8 +1519,8 @@ function showAllOkDanceDialog(reportText) {
     var danceWrap = w.add("group");
     danceWrap.alignment = ["center", "bottom"];
     var dancer = danceWrap.add("statictext", undefined, frames[0], {multiline: true});
-    dancer.preferredSize = [120, 72];
-    setMonoFont(dancer, 18);
+    dancer.preferredSize = [220, 88];
+    setMonoFont(dancer, 14);
 
     var row = w.add("group");
     row.alignment = ["right", "bottom"];
