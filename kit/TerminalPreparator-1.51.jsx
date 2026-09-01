@@ -1483,78 +1483,11 @@ function setMonoFont(control, size) {
     } catch (e2) {}
 }
 
-function showAllOkDanceDialog(reportText) {
-    var frames = getDancingPersonFrames();
-    var boxW = 340;
-    try {
-        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
-            var scrW = $.screens[0].right - $.screens[0].left;
-            if (scrW > 0) boxW = Math.min(360, Math.max(300, Math.floor(scrW * 0.22)));
-        }
-    } catch (eScr) {}
-
-    var w = new Window("palette", "Terminal Preparator");
-    w.orientation = "column";
-    w.alignChildren = ["fill", "top"];
-    w.margins = 12;
-    w.spacing = 10;
-
-    var et = w.add("statictext", undefined, reportText, {multiline: true});
-    et.preferredSize = [boxW, 80];
-    et.alignment = ["fill", "top"];
-
-    var danceWrap = w.add("group");
-    danceWrap.alignment = ["center", "bottom"];
-    var dancer = danceWrap.add("statictext", undefined, frames[0], {multiline: true});
-    dancer.preferredSize = [120, 72];
-    setMonoFont(dancer, 18);
-
-    var row = w.add("group");
-    row.alignment = ["right", "bottom"];
-    var closed = false;
-    var okBtn = row.add("button", undefined, "OK", {name: "ok"});
-    okBtn.onClick = function () {
-        closed = true;
-        w.close();
-    };
-    w.onClose = function () {
-        closed = true;
-        return true;
-    };
-
-    w.center();
-    w.show();
-
-    // palette + $.sleep: в InDesign sleep отдаёт CPU, клик OK обрабатывается.
-    var idx = 0;
-    var last = (new Date()).getTime();
-    while (w.visible && !closed) {
-        var now = (new Date()).getTime();
-        if (now - last >= 180) {
-            last = now;
-            idx++;
-            try {
-                dancer.text = frames[idx % frames.length];
-                w.update();
-            } catch (eTick) {
-                break;
-            }
-        }
-        $.sleep(40);
-    }
-}
-
 function showReportDialog(reportText) {
     persistPrepReport(reportText);
     if (isSilentPreparatorRun()) {
         try { $.writeln(reportText); } catch (eLog) {}
         return;
-    }
-    if (reportIsAllOk(reportText)) {
-        try {
-            showAllOkDanceDialog(reportText);
-            return;
-        } catch (eDance) {}
     }
     try {
         var w = new Window("dialog", "Terminal Preparator");
@@ -1618,6 +1551,27 @@ function showReportDialog(reportText) {
         et.preferredSize = [boxW, boxH];
         et.minimumSize = [Math.min(360, boxW), needsScroll ? 80 : boxH];
         et.alignment = ["fill", "top"];
+
+        // 1.51: человечек только при «все ок». Без while/sleep — иначе InDesign зависает.
+        if (reportIsAllOk(reportText)) {
+            var danceWrap = w.add("group");
+            danceWrap.alignment = ["center", "bottom"];
+            var danceFrames = getDancingPersonFrames();
+            var dancer = danceWrap.add("statictext", undefined, danceFrames[0], {multiline: true});
+            dancer.preferredSize = [120, 72];
+            setMonoFont(dancer, 18);
+            var danceIdx = 0;
+            var danceAt = 0;
+            w.onIdle = function () {
+                var now = (new Date()).getTime();
+                if (now - danceAt < 200) return;
+                danceAt = now;
+                danceIdx++;
+                try {
+                    dancer.text = danceFrames[danceIdx % danceFrames.length];
+                } catch (eTick) {}
+            };
+        }
 
         var row = w.add("group");
         row.alignment = ["right", "bottom"];
