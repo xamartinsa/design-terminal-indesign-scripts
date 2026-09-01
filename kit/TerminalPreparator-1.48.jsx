@@ -1470,36 +1470,47 @@ function showReportDialog(reportText) {
         w.margins = 12;
         w.spacing = 8;
 
-        // 1.47: уже и ниже, высота по числу строк (простыня линков — скролл).
+        // 1.47: уже и ниже, высота по числу строк.
+        // 1.48: scrolling: true в ScriptUI всегда рисует скроллбар — включаем только когда текст выше окна.
 
         var lineCount = 1;
         try {
             lineCount = String(reportText).split("\n").length;
         } catch (eLc) {}
 
+        var lineH = 18;
+        var padH = 28;
+        var neededH = padH + lineCount * lineH;
         var boxW = 500;
-        var boxH = Math.min(340, Math.max(110, 24 + lineCount * 18));
+        var maxH = 360;
         try {
             if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
                 var scr = $.screens[0];
                 var scrH = scr.bottom - scr.top;
                 var scrW = scr.right - scr.left;
                 if (scrW > 0) boxW = Math.min(520, Math.max(420, Math.floor(scrW * 0.36)));
-                if (scrH > 0) {
-                    var maxH = Math.min(360, Math.floor(scrH * 0.38));
-                    boxH = Math.min(maxH, Math.max(110, 24 + lineCount * 18));
-                }
+                if (scrH > 0) maxH = Math.min(360, Math.floor(scrH * 0.38));
             }
         } catch (eScr) {}
 
-        var et = w.add("edittext", undefined, reportText, {
-            multiline: true,
-            readonly: true,
-            scrolling: true
-        });
+        var needsScroll = neededH > maxH;
+        var boxH = needsScroll ? maxH : Math.max(90, neededH);
+
+        // Win ScriptUI: у multiline edittext скроллбар часто есть всегда.
+        // Короткий отчёт — statictext (без полосы). Простыня — edittext со скроллом.
+        var et;
+        if (needsScroll) {
+            et = w.add("edittext", undefined, reportText, {
+                multiline: true,
+                readonly: true,
+                scrolling: true
+            });
+        } else {
+            et = w.add("statictext", undefined, reportText, {multiline: true});
+        }
         et.preferredSize = [boxW, boxH];
-        et.minimumSize = [Math.min(360, boxW), 80];
-        et.alignment = ["fill", "fill"];
+        et.minimumSize = [Math.min(360, boxW), needsScroll ? 80 : boxH];
+        et.alignment = ["fill", "top"];
 
         var row = w.add("group");
         row.alignment = ["right", "bottom"];
