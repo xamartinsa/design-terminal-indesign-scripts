@@ -1,6 +1,4 @@
-﻿#targetengine "TerminalPreparatorUI"
-
-var doc = app.activeDocument;
+﻿var doc = app.activeDocument;
 
 // --- СНЯТИЕ ЗАМКОВ СО ВСЕХ ОБЪЕКТОВ И СЛОЕВ ---
 // Снимаем замки со всех слоев
@@ -1459,31 +1457,6 @@ function persistPrepReport(reportText) {
     } catch (eW) {}
 }
 
-function getDtLogoFrames() {
-    return [
-        "   ___     ____\n  | o \\      |\n  |   |      |\n  |___/      |",
-        "   ___     ____\n  | - \\      |\n  |   |      |\n  |___/      |",
-        "  ___      ____\n | o \\       |\n |   |       |\n |___/       |",
-        "    ___    ____\n   | o \\     |\n   |   |     |\n   |___/     |",
-        "   ___     ____\n  | * \\      |\n  |   |      |\n  |___/      |"
-    ];
-}
-
-function reportIsAllOk(text) {
-    var s = String(text);
-    return s.indexOf("⚠") === -1 && s.indexOf("Все ок") !== -1;
-}
-
-function setMonoFont(control, size) {
-    try {
-        control.graphics.font = ScriptUI.newFont("Courier New", "REGULAR", size);
-        return;
-    } catch (e1) {}
-    try {
-        control.graphics.font = ScriptUI.newFont("Courier", "REGULAR", size);
-    } catch (e2) {}
-}
-
 function stopPrepDance() {
     try {
         for (var i = app.idleTasks.length - 1; i >= 0; i--) {
@@ -1494,81 +1467,12 @@ function stopPrepDance() {
     } catch (eStop) {}
 }
 
-function showAllOkDanceDialog(reportText) {
-    stopPrepDance();
-
-    var frames = getDtLogoFrames();
-    var boxW = 340;
-    try {
-        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
-            var scrW = $.screens[0].right - $.screens[0].left;
-            if (scrW > 0) boxW = Math.min(360, Math.max(300, Math.floor(scrW * 0.22)));
-        }
-    } catch (eScr) {}
-
-    var w = new Window("palette", "Terminal Preparator");
-    w.orientation = "column";
-    w.alignChildren = ["fill", "top"];
-    w.margins = 12;
-    w.spacing = 10;
-
-    var et = w.add("statictext", undefined, reportText, {multiline: true});
-    et.preferredSize = [boxW, 80];
-    et.alignment = ["fill", "top"];
-
-    var danceWrap = w.add("group");
-    danceWrap.alignment = ["center", "bottom"];
-    var dancer = danceWrap.add("statictext", undefined, frames[0], {multiline: true});
-    dancer.preferredSize = [220, 88];
-    setMonoFont(dancer, 14);
-
-    var row = w.add("group");
-    row.alignment = ["right", "bottom"];
-    var okBtn = row.add("button", undefined, "OK", {name: "ok"});
-    okBtn.onClick = function () {
-        stopPrepDance();
-        w.close();
-    };
-    w.onClose = function () {
-        stopPrepDance();
-        return true;
-    };
-
-    var idx = 0;
-    var task = app.idleTasks.add({
-        name: "TerminalPreparatorDance",
-        sleep: 160
-    });
-    task.addEventListener("onIdle", function () {
-        try {
-            if (!w.visible) {
-                stopPrepDance();
-                return;
-            }
-            idx++;
-            dancer.text = frames[idx % frames.length];
-        } catch (eTick) {
-            stopPrepDance();
-        }
-    });
-
-    w.center();
-    w.show();
-}
-
 function showReportDialog(reportText) {
     persistPrepReport(reportText);
+    stopPrepDance();
     if (isSilentPreparatorRun()) {
         try { $.writeln(reportText); } catch (eLog) {}
         return;
-    }
-    if (reportIsAllOk(reportText)) {
-        try {
-            showAllOkDanceDialog(reportText);
-            return;
-        } catch (eDance) {
-            stopPrepDance();
-        }
     }
     try {
         var w = new Window("dialog", "Terminal Preparator");
