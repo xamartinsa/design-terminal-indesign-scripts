@@ -1,4 +1,6 @@
-﻿var doc = app.activeDocument;
+﻿#targetengine "TerminalPreparatorUI"
+
+var doc = app.activeDocument;
 
 // --- СНЯТИЕ ЗАМКОВ СО ВСЕХ ОБЪЕКТОВ И СЛОЕВ ---
 // Снимаем замки со всех слоев
@@ -1483,11 +1485,91 @@ function setMonoFont(control, size) {
     } catch (e2) {}
 }
 
+function stopPrepDance() {
+    try {
+        for (var i = app.idleTasks.length - 1; i >= 0; i--) {
+            if (String(app.idleTasks[i].name) === "TerminalPreparatorDance") {
+                app.idleTasks[i].remove();
+            }
+        }
+    } catch (eStop) {}
+}
+
+function showAllOkDanceDialog(reportText) {
+    stopPrepDance();
+
+    var frames = getDancingPersonFrames();
+    var boxW = 340;
+    try {
+        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
+            var scrW = $.screens[0].right - $.screens[0].left;
+            if (scrW > 0) boxW = Math.min(360, Math.max(300, Math.floor(scrW * 0.22)));
+        }
+    } catch (eScr) {}
+
+    var w = new Window("palette", "Terminal Preparator");
+    w.orientation = "column";
+    w.alignChildren = ["fill", "top"];
+    w.margins = 12;
+    w.spacing = 10;
+
+    var et = w.add("statictext", undefined, reportText, {multiline: true});
+    et.preferredSize = [boxW, 80];
+    et.alignment = ["fill", "top"];
+
+    var danceWrap = w.add("group");
+    danceWrap.alignment = ["center", "bottom"];
+    var dancer = danceWrap.add("statictext", undefined, frames[0], {multiline: true});
+    dancer.preferredSize = [120, 72];
+    setMonoFont(dancer, 18);
+
+    var row = w.add("group");
+    row.alignment = ["right", "bottom"];
+    var okBtn = row.add("button", undefined, "OK", {name: "ok"});
+    okBtn.onClick = function () {
+        stopPrepDance();
+        w.close();
+    };
+    w.onClose = function () {
+        stopPrepDance();
+        return true;
+    };
+
+    var idx = 0;
+    var task = app.idleTasks.add({
+        name: "TerminalPreparatorDance",
+        sleep: 160
+    });
+    task.addEventListener("onIdle", function () {
+        try {
+            if (!w.visible) {
+                stopPrepDance();
+                return;
+            }
+            idx++;
+            dancer.text = frames[idx % frames.length];
+        } catch (eTick) {
+            stopPrepDance();
+        }
+    });
+
+    w.center();
+    w.show();
+}
+
 function showReportDialog(reportText) {
     persistPrepReport(reportText);
     if (isSilentPreparatorRun()) {
         try { $.writeln(reportText); } catch (eLog) {}
         return;
+    }
+    if (reportIsAllOk(reportText)) {
+        try {
+            showAllOkDanceDialog(reportText);
+            return;
+        } catch (eDance) {
+            stopPrepDance();
+        }
     }
     try {
         var w = new Window("dialog", "Terminal Preparator");
@@ -1551,27 +1633,6 @@ function showReportDialog(reportText) {
         et.preferredSize = [boxW, boxH];
         et.minimumSize = [Math.min(360, boxW), needsScroll ? 80 : boxH];
         et.alignment = ["fill", "top"];
-
-        // 1.51: человечек только при «все ок». Без while/sleep — иначе InDesign зависает.
-        if (reportIsAllOk(reportText)) {
-            var danceWrap = w.add("group");
-            danceWrap.alignment = ["center", "bottom"];
-            var danceFrames = getDancingPersonFrames();
-            var dancer = danceWrap.add("statictext", undefined, danceFrames[0], {multiline: true});
-            dancer.preferredSize = [120, 72];
-            setMonoFont(dancer, 18);
-            var danceIdx = 0;
-            var danceAt = 0;
-            w.onIdle = function () {
-                var now = (new Date()).getTime();
-                if (now - danceAt < 200) return;
-                danceAt = now;
-                danceIdx++;
-                try {
-                    dancer.text = danceFrames[danceIdx % danceFrames.length];
-                } catch (eTick) {}
-            };
-        }
 
         var row = w.add("group");
         row.alignment = ["right", "bottom"];
