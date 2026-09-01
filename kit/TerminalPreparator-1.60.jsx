@@ -809,10 +809,10 @@ function checkImagesOnPage(page, pageName) {
                     // Проверяем PPI с учетом допуска.
                     // Для web-макетов в пикселях высокий PPI не является печатной проблемой.
                     if (!isWebPixelDocument && firstPPI > upperLimit) {
-                        // Для высокого PPI добавляем проверку на вес файла
-                        if (fileSize > 7) {
-                        hasPPIWarning = true;
-                        hasWarning = true;
+                        // Высокий PPI ок, если файл легче 10 МБ — незачем дёргать.
+                        if (fileSize >= 10) {
+                            hasPPIWarning = true;
+                            hasWarning = true;
                             warningText += "⚠ слишком высокий PPI: " + firstPPI + " (требуется: " + requiredPPI + "), вес файла: " + fileSizeFormatted + " МБ\n";
                         }
                     } else if (firstPPI < lowerLimit) {
