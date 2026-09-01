@@ -778,9 +778,6 @@ var pageWidthMm = Math.round(measurementToMm(doc.documentPreferences.pageWidth, 
 var pageHeightMm = Math.round(measurementToMm(doc.documentPreferences.pageHeight, doc.viewPreferences.verticalMeasurementUnits) * 10) / 10;
 var docArea = Math.round(pageWidthMm * pageHeightMm);
 var requiredPPI = isWebPixelDocument ? SCREEN_REQUIRED_PPI : getMinPPI(docArea);
-var ppiThresholdNote = isWebPixelDocument
-    ? ("PPI-порог web-макета: " + requiredPPI + " (экранный).")
-    : ("PPI-порог этого макета: " + requiredPPI + " (страница " + pageWidthMm + "×" + pageHeightMm + " мм, допуск ±15%).");
 
 // Функция проверки изображений на странице
 function checkImagesOnPage(page, pageName) {
@@ -1471,17 +1468,27 @@ function showReportDialog(reportText) {
         w.orientation = "column";
         w.alignChildren = ["fill", "fill"];
         w.margins = 12;
-        w.spacing = 10;
+        w.spacing = 8;
 
-        var boxW = 640;
-        var boxH = 420;
+        // 1.47: уже и ниже, высота по числу строк (простыня линков — скролл).
+
+        var lineCount = 1;
+        try {
+            lineCount = String(reportText).split("\n").length;
+        } catch (eLc) {}
+
+        var boxW = 500;
+        var boxH = Math.min(340, Math.max(110, 24 + lineCount * 18));
         try {
             if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
                 var scr = $.screens[0];
                 var scrH = scr.bottom - scr.top;
                 var scrW = scr.right - scr.left;
-                if (scrW > 0) boxW = Math.min(720, Math.max(480, Math.floor(scrW * 0.55)));
-                if (scrH > 0) boxH = Math.min(520, Math.max(280, Math.floor(scrH * 0.55)));
+                if (scrW > 0) boxW = Math.min(520, Math.max(420, Math.floor(scrW * 0.36)));
+                if (scrH > 0) {
+                    var maxH = Math.min(360, Math.floor(scrH * 0.38));
+                    boxH = Math.min(maxH, Math.max(110, 24 + lineCount * 18));
+                }
             }
         } catch (eScr) {}
 
@@ -1491,7 +1498,7 @@ function showReportDialog(reportText) {
             scrolling: true
         });
         et.preferredSize = [boxW, boxH];
-        et.minimumSize = [boxW, Math.min(280, boxH)];
+        et.minimumSize = [Math.min(360, boxW), 80];
         et.alignment = ["fill", "fill"];
 
         var row = w.add("group");
@@ -2256,10 +2263,6 @@ if (
     }
 } else {
     report = "✓ Все ок\n\n" + report;
-}
-
-if (ppiThresholdNote) {
-    report = ppiThresholdNote + "\n\n" + report;
 }
 
 // Добавляем информацию о заменах для Беларуси
