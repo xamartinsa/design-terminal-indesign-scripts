@@ -1482,69 +1482,116 @@ function createFireworksSim(cols, rows) {
     var rockets = [];
     var sparks = [];
     var tick = 0;
+    var cooldown = 0;
+    var launched = 0;
+    var cellN = cols * rows;
+    var cells = [];
+    var prio = [];
+    var dirty = [];
+    var dirtyN = 0;
+    var ci;
+    for (ci = 0; ci < cellN; ci++) {
+        cells[ci] = " ";
+        prio[ci] = 0;
+    }
 
     function spawnRocket() {
         rockets.push({
-            x: fwRnd(4, cols - 5),
+            x: fwRnd(5, cols - 6),
             y: rows - 1,
-            vy: fwRnd(-1.15, -0.7),
-            peak: fwRnd(2, rows * 0.4)
+            vy: fwRnd(-1.2, -0.92),
+            peak: fwRnd(1, Math.max(4, rows * 0.52))
         });
     }
 
     function explode(x, y) {
-        var n = 18 + Math.floor(Math.random() * 16);
+        var n = 28 + Math.floor(Math.random() * 10);
         var i, a, sp;
         for (i = 0; i < n; i++) {
-            a = (i / n) * Math.PI * 2 + fwRnd(-0.25, 0.25);
-            sp = fwRnd(0.55, 1.25);
+            a = (i / n) * Math.PI * 2 + fwRnd(-0.15, 0.15);
+            sp = fwRnd(0.42, 0.95);
             sparks.push({
                 x: x,
                 y: y,
                 vx: Math.cos(a) * sp,
-                vy: Math.sin(a) * sp * 0.6,
-                life: 8 + Math.floor(fwRnd(0, 6)),
-                maxLife: 14
+                vy: Math.sin(a) * sp * 0.82,
+                life: 16 + Math.floor(fwRnd(0, 10)),
+                maxLife: 26
             });
         }
-        for (i = 0; i < 10; i++) {
+        for (i = 0; i < 14; i++) {
             a = fwRnd(0, Math.PI * 2);
-            sp = fwRnd(0.12, 0.45);
+            sp = fwRnd(0.12, 0.38);
             sparks.push({
                 x: x,
                 y: y,
                 vx: Math.cos(a) * sp,
-                vy: Math.sin(a) * sp,
-                life: 6 + Math.floor(fwRnd(0, 6)),
-                maxLife: 12
+                vy: Math.sin(a) * sp * 0.8,
+                life: 10 + Math.floor(fwRnd(0, 8)),
+                maxLife: 18
             });
         }
     }
 
-    function plot(grid, x, y, ch, pri) {
+    function clearGrid() {
+        var d, idx;
+        for (d = 0; d < dirtyN; d++) {
+            idx = dirty[d];
+            cells[idx] = " ";
+            prio[idx] = 0;
+        }
+        dirtyN = 0;
+    }
+
+    function plot(x, y, ch, priVal) {
         var xi = Math.floor(x + 0.5);
         var yi = Math.floor(y + 0.5);
         if (xi < 0 || yi < 0 || xi >= cols || yi >= rows) return;
-        if (pri >= grid[yi][xi].p) {
-            grid[yi][xi].c = ch;
-            grid[yi][xi].p = pri;
+        var idx = yi * cols + xi;
+        if (priVal >= prio[idx]) {
+            if (prio[idx] === 0) {
+                dirty[dirtyN] = idx;
+                dirtyN++;
+            }
+            cells[idx] = ch;
+            prio[idx] = priVal;
         }
     }
 
+    function render() {
+        var y, x, row, parts = [];
+        for (y = 0; y < rows; y++) {
+            row = [];
+            var base = y * cols;
+            for (x = 0; x < cols; x++) row[x] = cells[base + x];
+            parts[y] = row.join("");
+        }
+        return parts.join("\n");
+    }
+
     function step() {
-        var i, r, s, y, x, grid, lines, row, t, ch, pri;
+        var i, r, s, t, ch, priVal;
         tick++;
-        if (tick === 1 || tick % 2 === 0) {
-            if (rockets.length < 6) spawnRocket();
+        if (cooldown > 0) cooldown--;
+        if (cooldown <= 0 && rockets.length === 0 && sparks.length < 3) {
+            if (launched >= 5) {
+                launched = 0;
+                cooldown = 22;
+            } else {
+                spawnRocket();
+                launched++;
+                cooldown = 18;
+            }
         }
 
         for (i = rockets.length - 1; i >= 0; i--) {
             r = rockets[i];
             r.y += r.vy;
-            r.vy += 0.014;
-            if (r.y <= r.peak || r.vy >= -0.03) {
+            r.vy += 0.004;
+            if (r.y <= r.peak) {
                 explode(r.x, r.y);
                 rockets.splice(i, 1);
+                cooldown = 16;
             }
         }
 
@@ -1552,105 +1599,91 @@ function createFireworksSim(cols, rows) {
             s = sparks[i];
             s.x += s.vx;
             s.y += s.vy;
-            s.vy += 0.08;
-            s.vx *= 0.97;
+            s.vy += 0.022;
+            s.vx *= 0.99;
             s.life--;
             if (s.life <= 0 || s.y >= rows) sparks.splice(i, 1);
         }
 
-        grid = [];
-        for (y = 0; y < rows; y++) {
-            grid[y] = [];
-            for (x = 0; x < cols; x++) {
-                grid[y][x] = { c: " ", p: 0 };
-            }
-        }
+        clearGrid();
 
         for (i = 0; i < rockets.length; i++) {
             r = rockets[i];
-            plot(grid, r.x, r.y, "^", 4);
-            plot(grid, r.x, r.y + 1, "|", 3);
-            plot(grid, r.x, r.y + 2, ":", 2);
-            plot(grid, r.x, r.y + 3, ".", 1);
+            plot(r.x, r.y, "^", 4);
+            plot(r.x, r.y + 1, "|", 3);
+            plot(r.x, r.y + 2, ":", 2);
+            plot(r.x, r.y + 3, ".", 1);
         }
 
         for (i = 0; i < sparks.length; i++) {
             s = sparks[i];
             t = s.life / (s.maxLife || 18);
             ch = ".";
-            pri = 1;
-            if (t > 0.78) { ch = "@"; pri = 5; }
-            else if (t > 0.55) { ch = "*"; pri = 4; }
-            else if (t > 0.35) { ch = "+"; pri = 3; }
-            else if (t > 0.18) { ch = ":"; pri = 2; }
-            plot(grid, s.x, s.y, ch, pri);
+            priVal = 1;
+            if (t > 0.78) { ch = "@"; priVal = 5; }
+            else if (t > 0.55) { ch = "*"; priVal = 4; }
+            else if (t > 0.35) { ch = "+"; priVal = 3; }
+            else if (t > 0.18) { ch = ":"; priVal = 2; }
+            plot(s.x, s.y, ch, priVal);
         }
 
-        lines = [];
-        for (y = 0; y < rows; y++) {
-            row = "";
-            for (x = 0; x < cols; x++) row += grid[y][x].c;
-            lines.push(row);
-        }
-        return lines.join("\n");
+        return render();
     }
 
     return { step: step };
 }
 
+function setMonoFont(control, size) {
+    try {
+        control.graphics.font = ScriptUI.newFont("Courier New", "REGULAR", size);
+        return;
+    } catch (e1) {}
+    try {
+        control.graphics.font = ScriptUI.newFont("Courier", "REGULAR", size);
+    } catch (e2) {}
+}
+
 function showAllOkDanceDialog(reportText) {
     stopPrepDance();
 
-    var fwCols = 100;
+    var boxW = 240;
+    try {
+        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
+            var scrW = $.screens[0].right - $.screens[0].left;
+            if (scrW > 0) boxW = Math.min(250, Math.max(220, Math.floor(scrW * 0.15)));
+        }
+    } catch (eScr) {}
+
+    var fwCols = Math.max(46, Math.floor(boxW / 5));
     var fwRows = 22;
-    var charW = 6;
-    var lh = 11;
-    var artW = fwCols * charW;
-    var artH = fwRows * lh;
     var sim = createFireworksSim(fwCols, fwRows);
 
     var w = new Window("palette", "Terminal Preparator");
     w.orientation = "column";
     w.alignChildren = ["fill", "top"];
-    w.margins = 10;
+    w.margins = 8;
     w.spacing = 2;
+    w.maximumSize = [boxW + 16, 2000];
 
     var et = w.add("statictext", undefined, reportText, {multiline: true});
-    et.preferredSize = [artW, 22];
+    et.preferredSize = [boxW, 22];
     et.alignment = ["fill", "top"];
 
-    var canvas = w.add("group");
-    canvas.alignment = ["fill", "top"];
-    canvas.preferredSize = [artW, artH];
-    canvas.minimumSize = [artW, artH];
-    canvas.fwFrame = sim.step();
-    canvas.onDraw = function () {
-        var g = this.graphics;
-        var ww = this.size.width;
-        var hh = this.size.height;
-        var bg;
-        try {
-            bg = w.graphics.backgroundColor;
-        } catch (eBg) {
-            bg = g.newBrush(g.BrushType.SOLID_COLOR, [0.94, 0.94, 0.94]);
-        }
-        g.newPath();
-        g.rectPath(0, 0, ww, hh);
-        g.fillPath(bg);
-        try {
-            g.font = ScriptUI.newFont("Courier New", "REGULAR", 8);
-        } catch (eFont) {}
-        var pen = g.newPen(g.PenType.SOLID_COLOR, [0.75, 0.35, 0.05], 1);
-        var lines = String(this.fwFrame || "").split("\n");
-        var i;
-        for (i = 0; i < lines.length; i++) {
-            g.drawString(lines[i], pen, 0, i * lh);
-        }
-    };
+    var dancer = w.add("statictext", undefined, sim.step(), {multiline: true});
+    dancer.preferredSize = [boxW, 260];
+    dancer.alignment = ["fill", "top"];
+    setMonoFont(dancer, 8);
+    try {
+        dancer.graphics.foregroundColor = dancer.graphics.newPen(
+            dancer.graphics.PenType.SOLID_COLOR,
+            [0.72, 0.32, 0.04],
+            1
+        );
+    } catch (eFg) {}
 
-    var row = w.add("group");
-    row.alignment = ["right", "bottom"];
-    var okBtn = row.add("button", undefined, "OK", {name: "ok"});
+    var okBtn = w.add("button", undefined, "OK", {name: "ok"});
+    okBtn.alignment = ["fill", "bottom"];
+    okBtn.preferredSize = [boxW, 28];
     okBtn.onClick = function () {
         stopPrepDance();
         w.close();
@@ -1670,14 +1703,7 @@ function showAllOkDanceDialog(reportText) {
                 stopPrepDance();
                 return;
             }
-            sim.step();
-            canvas.fwFrame = sim.step();
-            try {
-                canvas.notify("onDraw");
-            } catch (eN) {
-                canvas.visible = false;
-                canvas.visible = true;
-            }
+            dancer.text = sim.step();
         } catch (eTick) {
             stopPrepDance();
         }
@@ -1685,6 +1711,9 @@ function showAllOkDanceDialog(reportText) {
 
     w.center();
     w.show();
+    try {
+        dancer.text = sim.step();
+    } catch (eKick) {}
 }
 
 function showReportDialog(reportText) {
