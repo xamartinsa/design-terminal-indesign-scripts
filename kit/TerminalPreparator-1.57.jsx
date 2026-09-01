@@ -1487,7 +1487,7 @@ function createFireworksSim(cols, rows) {
         rockets.push({
             x: fwRnd(4, cols - 5),
             y: rows - 1,
-            vy: fwRnd(-0.58, -0.34),
+            vy: fwRnd(-1.15, -0.7),
             peak: fwRnd(2, rows * 0.4)
         });
     }
@@ -1497,19 +1497,19 @@ function createFireworksSim(cols, rows) {
         var i, a, sp;
         for (i = 0; i < n; i++) {
             a = (i / n) * Math.PI * 2 + fwRnd(-0.25, 0.25);
-            sp = fwRnd(0.3, 0.78);
+            sp = fwRnd(0.55, 1.25);
             sparks.push({
                 x: x,
                 y: y,
                 vx: Math.cos(a) * sp,
                 vy: Math.sin(a) * sp * 0.6,
-                life: 12 + Math.floor(fwRnd(0, 10)),
-                maxLife: 22
+                life: 8 + Math.floor(fwRnd(0, 6)),
+                maxLife: 14
             });
         }
         for (i = 0; i < 10; i++) {
             a = fwRnd(0, Math.PI * 2);
-            sp = fwRnd(0.06, 0.24);
+            sp = fwRnd(0.12, 0.45);
             sparks.push({
                 x: x,
                 y: y,
@@ -1534,14 +1534,14 @@ function createFireworksSim(cols, rows) {
     function step() {
         var i, r, s, y, x, grid, lines, row, t, ch, pri;
         tick++;
-        if (tick === 1 || tick % 6 === 0) {
-            if (rockets.length < 3) spawnRocket();
+        if (tick === 1 || tick % 2 === 0) {
+            if (rockets.length < 6) spawnRocket();
         }
 
         for (i = rockets.length - 1; i >= 0; i--) {
             r = rockets[i];
             r.y += r.vy;
-            r.vy += 0.007;
+            r.vy += 0.014;
             if (r.y <= r.peak || r.vy >= -0.03) {
                 explode(r.x, r.y);
                 rockets.splice(i, 1);
@@ -1552,8 +1552,8 @@ function createFireworksSim(cols, rows) {
             s = sparks[i];
             s.x += s.vx;
             s.y += s.vy;
-            s.vy += 0.048;
-            s.vx *= 0.985;
+            s.vy += 0.08;
+            s.vx *= 0.97;
             s.life--;
             if (s.life <= 0 || s.y >= rows) sparks.splice(i, 1);
         }
@@ -1601,51 +1601,50 @@ function createFireworksSim(cols, rows) {
 function showAllOkDanceDialog(reportText) {
     stopPrepDance();
 
-    var boxW = 340;
-    try {
-        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
-            var scrW = $.screens[0].right - $.screens[0].left;
-            if (scrW > 0) boxW = Math.min(360, Math.max(300, Math.floor(scrW * 0.22)));
-        }
-    } catch (eScr) {}
-
-    var side = 300;
-    var fwCols = 42;
-    var fwRows = 24;
+    var fwCols = 100;
+    var fwRows = 22;
+    var charW = 6;
+    var lh = 11;
+    var artW = fwCols * charW;
+    var artH = fwRows * lh;
     var sim = createFireworksSim(fwCols, fwRows);
 
     var w = new Window("palette", "Terminal Preparator");
     w.orientation = "column";
     w.alignChildren = ["fill", "top"];
-    w.margins = 12;
-    w.spacing = 8;
+    w.margins = 10;
+    w.spacing = 2;
 
     var et = w.add("statictext", undefined, reportText, {multiline: true});
-    et.preferredSize = [Math.max(boxW, side), 72];
+    et.preferredSize = [artW, 22];
     et.alignment = ["fill", "top"];
 
     var canvas = w.add("group");
-    canvas.alignment = ["center", "bottom"];
-    canvas.preferredSize = [side, side];
-    canvas.minimumSize = [side, side];
-    canvas.maximumSize = [side, side];
+    canvas.alignment = ["fill", "top"];
+    canvas.preferredSize = [artW, artH];
+    canvas.minimumSize = [artW, artH];
     canvas.fwFrame = sim.step();
     canvas.onDraw = function () {
         var g = this.graphics;
         var ww = this.size.width;
         var hh = this.size.height;
+        var bg;
+        try {
+            bg = w.graphics.backgroundColor;
+        } catch (eBg) {
+            bg = g.newBrush(g.BrushType.SOLID_COLOR, [0.94, 0.94, 0.94]);
+        }
         g.newPath();
         g.rectPath(0, 0, ww, hh);
-        g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, [0.07, 0.07, 0.09]));
+        g.fillPath(bg);
         try {
-            g.font = ScriptUI.newFont("Courier New", "REGULAR", 9);
+            g.font = ScriptUI.newFont("Courier New", "REGULAR", 8);
         } catch (eFont) {}
-        var pen = g.newPen(g.PenType.SOLID_COLOR, [1, 0.78, 0.28], 1);
+        var pen = g.newPen(g.PenType.SOLID_COLOR, [0.75, 0.35, 0.05], 1);
         var lines = String(this.fwFrame || "").split("\n");
         var i;
-        var lh = 11;
         for (i = 0; i < lines.length; i++) {
-            g.drawString(lines[i], pen, 6, 6 + i * lh);
+            g.drawString(lines[i], pen, 0, i * lh);
         }
     };
 
@@ -1663,7 +1662,7 @@ function showAllOkDanceDialog(reportText) {
 
     var task = app.idleTasks.add({
         name: "TerminalPreparatorDance",
-        sleep: 90
+        sleep: 20
     });
     task.addEventListener("onIdle", function () {
         try {
@@ -1671,6 +1670,7 @@ function showAllOkDanceDialog(reportText) {
                 stopPrepDance();
                 return;
             }
+            sim.step();
             canvas.fwFrame = sim.step();
             try {
                 canvas.notify("onDraw");
