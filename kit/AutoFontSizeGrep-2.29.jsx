@@ -1,13 +1,9 @@
-﻿// AutoFontSizeGrep-2.28.jsx
+﻿// AutoFontSizeGrep-2.29.jsx
 // Локальные nested GREP на выбранный абзац: длиннее текст → меньше кегль.
-// Выражение как в 2.26: ^.{N,}  (один абзац, без переносов — не наша задача).
-// Порядок добавления как в 2.26: база ^.{1,} первой, дальше пороги по возрастанию.
+// Выражение: ^.{N,}  (один абзац, без переносов).
+// Порядок: база ^.{1,} первой, дальше пороги по возрастанию.
 //
-// 2.28 относительно 2.27:
-//  - Вернули ^.{N,} и порядок GREP. Смена выражения и «верхний выигрывает»
-//    были ошибочны.
-//  - Окно настроек больше не пропадает: afgSilent читается один раз и сразу
-//    сбрасывается. В 2.27 флаг оставался в InDesign после COM-теста.
+// 2.29: дефолт 8 ступеней, «До» ≈ ×2.7 от текущего текста (13 → 35), пол 67%.
 //
 // Оверрайд кегля на тексте перекрывает nested GREP — перед установкой кегль
 // возвращается к значению стиля абзаца (шрифт/трекинг/цвет не трогаем).
@@ -17,7 +13,7 @@
 // Владение: label dt.sandbox.autofontsize.grep = owned
 
 (function () {
-    var SCRIPT_NAME = "Auto Font Size GREP 2.28";
+    var SCRIPT_NAME = "Auto Font Size GREP 2.29";
     var TAG_KEY = "dt.sandbox.autofontsize.grep";
     var TAG_VALUE = "owned";
     var SETTINGS_KEY = "dt.sandbox.autofontsize.grep.settings";
@@ -30,7 +26,11 @@
     var MIN_PERCENT_CEIL = 95;
     var MIN_STEPS = 2;
     var MAX_STEPS = 8;
-    var DEFAULT_STEPS = 4;
+    var DEFAULT_STEPS = 8;
+    // «До»: короткий эталон (город) должен держать 100% заметно дольше.
+    // 13 символов → 35.
+    var UNTIL_RATIO = 2.7;
+    var DEFAULT_MIN_PERCENT = 67;
     // Доля «потерянного» масштаба кегля, которую интерлиньяж сохраняет.
     // 0 = как кегль; 1 = интерлиньяж не уменьшается. ~0.3 = чуть мягче.
     var LEADING_SOFTEN = 0.3;
@@ -283,14 +283,17 @@
 
     function defaultDialogState(info) {
         var step = charStep(info.charCount);
+        var untilCount = Math.round(info.charCount * UNTIL_RATIO);
+        if (untilCount < info.charCount) {
+            untilCount = info.charCount;
+        }
         var state = {
-            untilCount: info.charCount,
-            lastThreshold: info.charCount + DEFAULT_STEPS * step,
+            untilCount: untilCount,
+            lastThreshold: untilCount + DEFAULT_STEPS * step,
             stepCount: DEFAULT_STEPS,
             maxPercent: 100,
-            minPercent: 60
+            minPercent: DEFAULT_MIN_PERCENT
         };
-        state.minPercent = minPercentFor(state);
         return state;
     }
 
