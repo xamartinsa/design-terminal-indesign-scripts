@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-09-03T17:36:48Z",
+    "updatedAt":  "2026-09-03T18:01:08Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -41,9 +41,9 @@
                   },
                   {
                       "id":  "AutoFontSizeGrep",
-                      "name":  "AutoFontSizeGrep-2.27.jsx",
-                      "version":  "2.27",
-                      "sha256":  "63b43b4ffa8f28724236580db9f1e4300139532d261dcb5d3c389295e8119370"
+                      "name":  "AutoFontSizeGrep-2.28.jsx",
+                      "version":  "2.28",
+                      "sha256":  "6f14dff79743c0bb4bf04183d19aa47f3bf15209715fa72edbc12329954c0f8c"
                   },
                   {
                       "id":  "LegalBarcodeInsert",

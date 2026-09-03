@@ -1,31 +1,23 @@
-﻿// AutoFontSizeGrep-2.27.jsx
+﻿// AutoFontSizeGrep-2.28.jsx
 // Локальные nested GREP на выбранный абзац: длиннее текст → меньше кегль.
+// Выражение как в 2.26: ^.{N,}  (один абзац, без переносов — не наша задача).
+// Порядок добавления как в 2.26: база ^.{1,} первой, дальше пороги по возрастанию.
 //
-// Как это устроено в InDesign (проверено на 21.2, см. README):
-//  1. Локальный оверрайд кегля на тексте ПЕРЕКРЫВАЕТ nested GREP. Поэтому перед
-//     установкой GREP кегль/интерлиньяж возвращаются к значению стиля абзаца —
-//     InDesign снимает оверрайд, если значение совпало со стилем. Остальные
-//     оверрайды (шрифт, трекинг, цвет) не трогаем; clearOverrides не нужен.
-//  2. При пересечении совпадений выигрывает GREP, стоящий ВЫШЕ в списке.
-//     Ступени добавляются от самого длинного порога к базе ^[^\r]{1,}.
-//     (До 2.27 база шла первой и всегда выигрывала — кегль не падал.)
-//  3. «.» не матчит принудительный перенос (Shift+Enter), а «^» матчит начало
-//     каждой строки. Выражение ^[^\r]{N,} считает абзац целиком.
-//  4. character.contents у спецсимволов — enum, не строка. Длина считается по
-//     characters.length без символа конца абзаца.
+// 2.28 относительно 2.27:
+//  - Вернули ^.{N,} и порядок GREP. Смена выражения и «верхний выигрывает»
+//    были ошибочны.
+//  - Окно настроек больше не пропадает: afgSilent читается один раз и сразу
+//    сбрасывается. В 2.27 флаг оставался в InDesign после COM-теста.
 //
-// Без памяти на фрейме. База = живой оверрайд кегля, если он есть; иначе базовый
-// AFG-стиль уже стоящего GREP; иначе кегль стиля абзаца. Отмена возвращает
-// исходные GREP и кегль.
-//
-// Silent (для тестов): app.scriptArgs afgSilent=1 [afgUntil afgLast afgSteps
-// afgMin afgMax]; отчёт в $.global.afgLastReport, без alert.
+// Оверрайд кегля на тексте перекрывает nested GREP — перед установкой кегль
+// возвращается к значению стиля абзаца (шрифт/трекинг/цвет не трогаем).
+// Без памяти на фрейме. Отмена возвращает исходные GREP и кегль.
 // Лог: ~/Desktop/AutoFontSizeGrep.log
 // [None] на символах обязателен.
 // Владение: label dt.sandbox.autofontsize.grep = owned
 
 (function () {
-    var SCRIPT_NAME = "Auto Font Size GREP 2.27";
+    var SCRIPT_NAME = "Auto Font Size GREP 2.28";
     var TAG_KEY = "dt.sandbox.autofontsize.grep";
     var TAG_VALUE = "owned";
     var SETTINGS_KEY = "dt.sandbox.autofontsize.grep.settings";
@@ -44,10 +36,18 @@
     var LEADING_SOFTEN = 0.3;
     var AUTO_LEADING_FALLBACK = 1.2;
     var LOG_PATH = Folder.desktop.fsName + "/AutoFontSizeGrep.log";
-    // Наши выражения длины: новое ^[^\r]{N,} и старое ^.{N,}.
+    // Канон 2.26/2.28: ^.{N,}. 2.27 успел наставить ^[^\r]{N,} — тоже снимаем.
     var LENGTH_GREP_RE = /^\^(?:\.|\[\^\\r\])\{(\d+),\}$/;
 
     var SILENT = false;
+    var AFG_ARGS = {
+        cancel: false,
+        until: "",
+        last: "",
+        steps: "",
+        max: "",
+        min: ""
+    };
     var REPORT = [];
 
     // ---------------------------------------------------------------- utils
@@ -59,6 +59,31 @@
             }
         } catch (e) {}
         return "";
+    }
+
+    // scriptArgs живут в процессе InDesign. Прочитали — сразу вытерли,
+    // иначе следующий запуск из панели скриптов уйдёт в silent без окна.
+    function consumeAfgArgs() {
+        SILENT = readScriptArg("afgSilent") === "1";
+        AFG_ARGS.cancel = readScriptArg("afgCancel") === "1";
+        AFG_ARGS.until = readScriptArg("afgUntil");
+        AFG_ARGS.last = readScriptArg("afgLast");
+        AFG_ARGS.steps = readScriptArg("afgSteps");
+        AFG_ARGS.max = readScriptArg("afgMax");
+        AFG_ARGS.min = readScriptArg("afgMin");
+        try {
+            app.scriptArgs.clear();
+        } catch (eClear) {
+            var names = [
+                "afgSilent", "afgCancel", "afgUntil", "afgLast",
+                "afgSteps", "afgMax", "afgMin", "afgPath"
+            ];
+            for (var i = 0; i < names.length; i++) {
+                try {
+                    app.scriptArgs.setValue(names[i], "");
+                } catch (eSet) {}
+            }
+        }
     }
 
     function log(msg) {
@@ -509,10 +534,10 @@
 
     // ---------------------------------------------------------------- GREP
 
-    // Весь абзац кроме символа конца абзаца. Не «.»: точка не матчит
-    // принудительный перенос строки, а «^» матчит начало каждой строки.
+    // Символы абзаца целиком (пробелы считаются). В контексте задачи
+    // переносов во фрейме нет.
     function makeExpression(threshold) {
-        return "^[^\\r]{" + threshold + ",}";
+        return "^.{" + threshold + ",}";
     }
 
     function lengthThresholdOf(expression) {
@@ -1220,26 +1245,26 @@
     function silentChoice(info) {
         var state = defaultDialogState(info);
         var v;
-        v = readScriptArg("afgUntil");
+        v = AFG_ARGS.until;
         if (v !== "") {
             state.untilCount = parseNumber(v);
         }
-        v = readScriptArg("afgLast");
+        v = AFG_ARGS.last;
         if (v !== "") {
             state.lastThreshold = parseNumber(v);
         }
-        v = readScriptArg("afgSteps");
+        v = AFG_ARGS.steps;
         if (v !== "") {
             state.stepCount = Math.max(MIN_STEPS, Math.min(MAX_STEPS, parseNumber(v)));
         }
-        v = readScriptArg("afgMax");
+        v = AFG_ARGS.max;
         if (v !== "") {
             state.maxPercent = parseNumber(v);
         }
-        v = readScriptArg("afgMin");
+        v = AFG_ARGS.min;
         if (v !== "") {
             state.minPercent = parseNumber(v);
-        } else if (readScriptArg("afgUntil") !== "" || readScriptArg("afgLast") !== "") {
+        } else if (AFG_ARGS.until !== "" || AFG_ARGS.last !== "") {
             state.minPercent = minPercentFor(state);
         }
         var choice = choiceFromState(info, state);
@@ -1278,15 +1303,11 @@
         releaseSizeToStyle(info);
 
         var allStages = withBaseStage(info, choice.stages, choice.maxPercent);
-        // Верхний GREP выигрывает при пересечении → самый длинный порог первым,
-        // база ^[^\r]{1,} последней.
-        var ordered = allStages.slice(0).sort(function (a, b) {
-            return b.threshold - a.threshold;
-        });
+        // Как в 2.26: база первой, пороги по возрастанию.
 
         var styleByThreshold = {};
-        for (var i = 0; i < ordered.length; i++) {
-            var stage = ordered[i];
+        for (var i = 0; i < allStages.length; i++) {
+            var stage = allStages[i];
             var characterStyle = ensureCharacterStyle(doc, stage.pointSize, stage.leading);
             var expression = makeExpression(stage.threshold);
             paragraph.nestedGrepStyles.add({
@@ -1359,7 +1380,7 @@
     // --------------------------------------------------------------- main
 
     function main() {
-        SILENT = readScriptArg("afgSilent") === "1";
+        consumeAfgArgs();
         REPORT = [];
         log("======== main start " + SCRIPT_NAME + (SILENT ? " (silent)" : "") + " ========");
 
@@ -1459,8 +1480,8 @@
         var choice;
         if (!SILENT) {
             choice = showDialog(info, previewState);
-        } else if (readScriptArg("afgCancel") === "1") {
-            choice = null; // тестовый хук: путь «Отмена»
+        } else if (AFG_ARGS.cancel) {
+            choice = null;
         } else {
             choice = silentChoice(info);
         }
