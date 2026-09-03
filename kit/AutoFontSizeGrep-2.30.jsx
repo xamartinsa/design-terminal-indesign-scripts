@@ -1,9 +1,10 @@
-﻿// AutoFontSizeGrep-2.29.jsx
+﻿// AutoFontSizeGrep-2.30.jsx
 // Локальные nested GREP на выбранный абзац: длиннее текст → меньше кегль.
 // Выражение: ^.{N,}  (один абзац, без переносов).
 // Порядок: база ^.{1,} первой, дальше пороги по возрастанию.
 //
-// 2.29: дефолт 8 ступеней, «До» ≈ ×2.7 от текущего текста (13 → 35), пол 67%.
+// 2.30: «До» = текущая длина текста. Дефолт: 8 ступеней, «После» ≈ ×2.7
+// (13 → 35), нижний % = 67.
 //
 // Оверрайд кегля на тексте перекрывает nested GREP — перед установкой кегль
 // возвращается к значению стиля абзаца (шрифт/трекинг/цвет не трогаем).
@@ -13,7 +14,7 @@
 // Владение: label dt.sandbox.autofontsize.grep = owned
 
 (function () {
-    var SCRIPT_NAME = "Auto Font Size GREP 2.29";
+    var SCRIPT_NAME = "Auto Font Size GREP 2.30";
     var TAG_KEY = "dt.sandbox.autofontsize.grep";
     var TAG_VALUE = "owned";
     var SETTINGS_KEY = "dt.sandbox.autofontsize.grep.settings";
@@ -27,9 +28,8 @@
     var MIN_STEPS = 2;
     var MAX_STEPS = 8;
     var DEFAULT_STEPS = 8;
-    // «До»: короткий эталон (город) должен держать 100% заметно дольше.
-    // 13 символов → 35.
-    var UNTIL_RATIO = 2.7;
+    // «После» относительно текущего текста («До»). 13 → 35.
+    var LAST_RATIO = 2.7;
     var DEFAULT_MIN_PERCENT = 67;
     // Доля «потерянного» масштаба кегля, которую интерлиньяж сохраняет.
     // 0 = как кегль; 1 = интерлиньяж не уменьшается. ~0.3 = чуть мягче.
@@ -282,19 +282,18 @@
     }
 
     function defaultDialogState(info) {
-        var step = charStep(info.charCount);
-        var untilCount = Math.round(info.charCount * UNTIL_RATIO);
-        if (untilCount < info.charCount) {
-            untilCount = info.charCount;
+        var untilCount = info.charCount;
+        var lastThreshold = Math.round(info.charCount * LAST_RATIO);
+        if (lastThreshold <= untilCount) {
+            lastThreshold = untilCount + DEFAULT_STEPS * charStep(info.charCount);
         }
-        var state = {
+        return {
             untilCount: untilCount,
-            lastThreshold: untilCount + DEFAULT_STEPS * step,
+            lastThreshold: lastThreshold,
             stepCount: DEFAULT_STEPS,
             maxPercent: 100,
             minPercent: DEFAULT_MIN_PERCENT
         };
-        return state;
     }
 
     // Кегль: линейно. Интерлиньяж: медленнее (часть дропа сохраняется).
