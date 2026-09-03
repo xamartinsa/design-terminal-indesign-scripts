@@ -1,4 +1,4 @@
-﻿// LegalParagraphSetup-1.12.jsx
+﻿// LegalParagraphSetup-1.13.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification
@@ -6,12 +6,13 @@
 // - No Break for Latin websites (dodo.ru) and Latin letter runs (no mid-word URL breaks)
 // - No Break for digit runs + following space ("1 пиццы", "1 клиента")
 // - No Break for Code39 barcode `*[terminal.renderCode]*` / `*P530.L4.T5.R12*`
+// - No Break for юр. ярлыки и адресные аббр. + пробел (ОГРН 1…, ул. Морская, д. 12)
 // - quote cleanup → Russian guillemets «»
 // - spaced hyphen/en-dash " - " / " – " → em dash (not 10–12)
 // - strip a single trailing period at end of frame (also after [...] variables)
 
 (function () {
-    var SCRIPT_VERSION = "1.12";
+    var SCRIPT_VERSION = "1.13";
     var NO_BREAK_CHAR_STYLE_NAME = "No Break";
 
     // Base patterns (same idea as BasicParagraphSetup) + longer RU prepositions/conjunctions.
@@ -29,12 +30,23 @@
     // Barcode (1.12):
     // - \*[A-Za-z0-9.]+\*  → whole Code39 run after farm replace (*prerender* / *P530.L4.T5.R12*)
     //   Hard NoBreak on the template run is still required; GREP is a safety net on legal frames.
+    //
+    // Address / legal labels (1.13), from real company.legalAddress + stateNumberLong (RU ~120):
+    // - ОГРН / ОГРНИП / ИНН / ООО / ПАО / ЗАО + space → номер или имя не на новой строке
+    // - ул. Морская, д. 12, корп. 2, пр-кт / пр-т / дом 245 (капс и строчные)
+    // - д.256 без пробела после точки
+    // Список только из живых адресов, не KLADR целиком. г. / д. / ш. на одну букву
+    // уже закрывает \<[\l\u]\.\s
     var GREP_EXPRESSION =
         "\\*[A-Za-z0-9.]+\\*" +
         "|[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+" +
         "|[A-Za-z]{2,}" +
         "|.\\.[\\l\\u]" +
         "|\\<(?:для|или|при|над|под|без|про|через|чтобы|также|если|когда|после|перед|между|около|вместо|среди|кроме|возле|вдоль|против|ради|сквозь|согласно|вокруг|насчёт|насчет)\\s" +
+        "|(?i)\\<(?:огрнип|огрн|инн|ооо|пао|зао)\\s" +
+        "|(?i)\\<(?:пр-кт|пр-т|пр-д|б-р|р-н|п-т|г\\.о)\\.?\\s" +
+        "|(?i)\\<(?:помещение|квартира|корпус|строение|микрорайон|проспект|переулок|набережная|бульвар|площадь|проезд|улица|шоссе|район|этаж|литера|литер|офис|дом|помещ|комн|корп|мкрн|респ|обл|пгт|пос|пер|лит|тер|стр|кор|пом|ком|мкр|оф|кв|ул|эт|зд|ш|пр|д)\\.?\\s" +
+        "|(?i)\\<(?:ул|стр|корп|кор|дом|кв|оф|пом|д|к)\\.\\d" +
         "|\\<[\\l\\u][\\l\\u]\\s" +
         "|\\<[\\l\\u]\\s" +
         "|\\<\\d+\\s" +
@@ -126,7 +138,8 @@
                         existing.grepExpression.indexOf("[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+") !== -1 ||
                         existing.grepExpression.indexOf("[A-Za-z]{2,}") !== -1 ||
                         existing.grepExpression.indexOf("\\<\\d+\\s") !== -1 ||
-                        existing.grepExpression.indexOf("\\*[A-Za-z0-9.]+\\*") !== -1
+                        existing.grepExpression.indexOf("\\*[A-Za-z0-9.]+\\*") !== -1 ||
+                        existing.grepExpression.indexOf("огрн") !== -1
                     )
                 ) {
                     existing.remove();
