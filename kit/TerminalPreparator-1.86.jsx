@@ -1,10 +1,103 @@
 ﻿#targetengine "TerminalPreparatorUI"
 
-var doc = app.activeDocument;
+(function () {
+
+function getLiveDocument() {
+    var d, i, n;
+    try {
+        d = app.activeDocument;
+        if (d && d.isValid) return d;
+    } catch (e0) {}
+    try {
+        n = app.layoutWindows.length;
+        for (i = 0; i < n; i++) {
+            try {
+                d = app.layoutWindows[i].parent;
+                if (d && d.isValid) return d;
+            } catch (e1) {}
+        }
+    } catch (e2) {}
+    try {
+        n = app.documents.length;
+        for (i = 0; i < n; i++) {
+            try {
+                d = app.documents[i];
+                if (d && d.isValid) return d;
+            } catch (e3) {}
+        }
+    } catch (e4) {}
+    return null;
+}
+
+try { stopPrepDance(); } catch (eStop0) {}
+
+var doc = getLiveDocument();
+if (!doc) {
+    alert("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u0437\u044f\u0442\u044c \u043c\u0430\u043a\u0435\u0442. \u0417\u0430\u043a\u0440\u043e\u0439 \u043e\u043a\u043d\u043e \u043e\u0448\u0438\u0431\u043a\u0438 \u0438 \u043e\u0442\u0447\u0451\u0442 Preparator, \u043a\u043b\u0438\u043a\u043d\u0438 \u043f\u043e \u043c\u0430\u043a\u0435\u0442\u0443.");
+    return;
+}
+
+// FigmaToIndd: скрытые слои сверки, не для Терминала.
+// Слои: "Figma Reference" / "Figma Reference Multiply".
+// Файл: reference/figma_reference_overlay.jpg
+function isFigmaReferenceOverlayLayerName(name) {
+    var n = String(name || "");
+    return n === "Figma Reference" || n.indexOf("Figma Reference ") === 0;
+}
+
+function isFigmaReferenceOverlayLinkName(name) {
+    var n = String(name || "").toLowerCase();
+    return n.indexOf("figma_reference_overlay") !== -1;
+}
+
+function isFigmaReferenceOverlayItem(item) {
+    try {
+        if (isFigmaReferenceOverlayLayerName(item.itemLayer.name)) return true;
+    } catch (eLayer) {}
+    try {
+        if (isFigmaReferenceOverlayLayerName(item.name)) return true;
+    } catch (eName) {}
+    return false;
+}
+
+function isFigmaReferenceOverlayLink(link) {
+    try {
+        if (isFigmaReferenceOverlayLinkName(link.name)) return true;
+    } catch (eName) {}
+    try {
+        var p = link.parent;
+        if (p && isFigmaReferenceOverlayItem(p)) return true;
+        if (p && p.parent && isFigmaReferenceOverlayItem(p.parent)) return true;
+    } catch (eParent) {}
+    return false;
+}
+
+// [pack.hero#link]: ферма подставит картинку из value set, PPI плейсхолдера не важен.
+function nameLooksLikeLinkVariable(name) {
+    var n = String(name || "");
+    return n.length >= 7 && n.charAt(0) === "[" && n.slice(-6) === "#link]";
+}
+
+function itemIsLinkVariablePlaceholder(item) {
+    var cur = item;
+    for (var g = 0; g < 8; g++) {
+        if (!cur) return false;
+        try {
+            if (nameLooksLikeLinkVariable(cur.name)) return true;
+        } catch (eName) {}
+        try {
+            cur = cur.parent;
+        } catch (eParent) {
+            return false;
+        }
+    }
+    return false;
+}
 
 // --- СНЯТИЕ ЗАМКОВ СО ВСЕХ ОБЪЕКТОВ И СЛОЕВ ---
-// Снимаем замки со всех слоев
+// Оверлей Figma не трогаем: он специально hidden + locked.
 for (var i = 0; i < doc.layers.length; i++) {
+    if (isFigmaReferenceOverlayLayerName(doc.layers[i].name)) continue;
     doc.layers[i].locked = false;
 }
 
@@ -13,6 +106,7 @@ for (var i = 0; i < doc.pages.length; i++) {
     var pageItems = doc.pages[i].allPageItems;
     for (var j = 0; j < pageItems.length; j++) {
         try {
+            if (isFigmaReferenceOverlayItem(pageItems[j])) continue;
             if (pageItems[j].locked) {
                 pageItems[j].locked = false;
             }
@@ -25,6 +119,7 @@ for (var i = 0; i < doc.masterSpreads.length; i++) {
     var masterItems = doc.masterSpreads[i].allPageItems;
     for (var j = 0; j < masterItems.length; j++) {
         try {
+            if (isFigmaReferenceOverlayItem(masterItems[j])) continue;
             if (masterItems[j].locked) {
                 masterItems[j].locked = false;
             }
@@ -40,7 +135,6 @@ var hasBleed = doc.documentPreferences.documentBleedTopOffset > 0 &&
 
 // Проверяем, является ли документ веб-документом
 var isWebDocument = doc.documentPreferences.intent === DocumentIntentOptions.WEB_INTENT;
-var bleedWarning = !hasBleed && !isWebDocument;
 var SCREEN_REQUIRED_PPI = 72;
 
 function isPixelMeasurementUnit(unit) {
@@ -66,7 +160,42 @@ function isPixelDocument(doc) {
     return false;
 }
 
+function collectDocNameHaystack(docRef) {
+    var s = "";
+    try { s += " " + docRef.name; } catch (eName) {}
+    try {
+        var f = new File(docRef.fullName);
+        s += " " + f.name;
+        if (f.parent) s += " " + f.parent.name;
+    } catch (eFile) {}
+    return s.toLowerCase();
+}
+
+function layoutSkipsBleedCheck(haystack) {
+    var hay = String(haystack || "").toLowerCase();
+    if (!hay) return false;
+    if (hay.indexOf("price tag") !== -1) return true;
+    if (hay.indexOf("pricetag") !== -1) return true;
+    if (hay.indexOf("ценник") !== -1) return true;
+    if (hay.indexOf("sticker") !== -1) return true;
+    if (hay.indexOf("наклейк") !== -1) return true;
+    if (hay.indexOf("digital") !== -1) return true;
+    if (hay.indexOf("internet advertising") !== -1) return true;
+    if (hay.indexOf("tv board") !== -1) return true;
+    if (hay.indexOf("video for") !== -1) return true;
+    if (hay.indexOf("social media") !== -1) return true;
+    if (hay.indexOf("kiosk") !== -1) return true;
+    if (hay.indexOf("banner web") !== -1) return true;
+    if (hay.indexOf("google display") !== -1) return true;
+    if (hay.indexOf("facebook") !== -1) return true;
+    if (hay.indexOf("in-app") !== -1) return true;
+    if (hay.indexOf(" px") !== -1) return true;
+    return false;
+}
+
 var isWebPixelDocument = isWebDocument && isPixelDocument(doc);
+var bleedWarning = !hasBleed && !isWebDocument && !isPixelDocument(doc) &&
+    !layoutSkipsBleedCheck(collectDocNameHaystack(doc));
 
 // Функция для определения минимального PPI по площади в мм²
 // A4 = 210×297 = 62370 → 300; билборд 4×3 м (1:10) = 400×300 = 120000 → 256
@@ -139,6 +268,8 @@ var legalFramesWithoutHyphenation = [];
 var legalFramesWithoutRussianLanguage = [];
 var legalFramesCheckedCount = 0;
 var checkedLegalTypographyFrames = {};
+var hasLegalWithoutParagraphSetup = false;
+var checkedLegalSetupFrames = {};
 
 function addUniqueLimited(list, seen, value, limit) {
     if (!value || seen[value]) {
@@ -260,6 +391,56 @@ function collectLegalLanguageProblems(textFrame, frameSnippet) {
     return problems;
 }
 
+function legalParagraphSetupGrepLooksApplied(expr) {
+    var e = String(expr || "");
+    return e.indexOf("для|или|при") !== -1 ||
+        e.indexOf("\\*[A-Za-z0-9.]+\\*") !== -1 ||
+        e.indexOf("огрн") !== -1 ||
+        e.indexOf("[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+") !== -1;
+}
+
+function paragraphLooksLikeLegalParagraphSetup(paragraph) {
+    try {
+        var greps = paragraph.nestedGrepStyles;
+        var g;
+        for (g = 0; g < greps.length; g++) {
+            if (legalParagraphSetupGrepLooksApplied(greps[g].grepExpression)) {
+                return true;
+            }
+        }
+    } catch (eGrep) {}
+    return false;
+}
+
+function legalFrameHasParagraphSetup(textFrame) {
+    try {
+        var paragraphs = textFrame.paragraphs.everyItem().getElements();
+        var visible = 0;
+        var withLps = 0;
+        var p;
+        var contents;
+        for (p = 0; p < paragraphs.length; p++) {
+            contents = String(paragraphs[p].contents || "").replace(/\s+/g, "");
+            if (!contents.length) continue;
+            visible++;
+            if (paragraphLooksLikeLegalParagraphSetup(paragraphs[p])) withLps++;
+        }
+        return visible > 0 && withLps === visible;
+    } catch (eFrame) {}
+    return false;
+}
+
+function checkLegalParagraphSetup(textFrame) {
+    var key = getTextFrameKey(textFrame);
+    if (checkedLegalSetupFrames[key]) {
+        return;
+    }
+    checkedLegalSetupFrames[key] = true;
+    if (!legalFrameHasParagraphSetup(textFrame)) {
+        hasLegalWithoutParagraphSetup = true;
+    }
+}
+
 function checkLegalTypography(textFrame) {
     var key = getTextFrameKey(textFrame);
     if (checkedLegalTypographyFrames[key]) {
@@ -277,6 +458,27 @@ function checkLegalTypography(textFrame) {
     var languageProblems = collectLegalLanguageProblems(textFrame, snippet);
     for (var l = 0; l < languageProblems.length; l++) {
         legalFramesWithoutRussianLanguage.push(languageProblems[l]);
+    }
+}
+
+function frameLooksLikeLegal(frameText) {
+    var t = String(frameText || "");
+    return /\[company\.(name|statenumberlong|statenumber|legaladdress)\]/i.test(t) ||
+        /<COMPANY_(NAME|STATE_NUMBER|LEGAL_ADDRESS)>/i.test(t);
+}
+
+function addUniqueNames(target, names) {
+    var seen = {};
+    var i, n;
+    for (i = 0; i < target.length; i++) {
+        seen[String(target[i])] = true;
+    }
+    for (i = 0; i < names.length; i++) {
+        n = names[i];
+        if (n && !seen[String(n)]) {
+            seen[String(n)] = true;
+            target.push(n);
+        }
     }
 }
 
@@ -349,13 +551,13 @@ for (var i = 0; i < found.length; i++) {
     if (textFrame) {
         var variableName = found[i].contents;
         var frameText = textFrame.contents;
-        var isLegalFrame = frameText.match(/\[company\.(name|stateNumberLong|stateNumber|legalAddress)\]/) ||
-            frameText.match(/<COMPANY_(NAME|STATE_NUMBER|LEGAL_ADDRESS)>/i);
+        var isLegalFrame = frameLooksLikeLegal(frameText);
         var isHidden = isAnyParentHidden(textFrame);
 
         if (isLegalFrame) {
             if (!isHidden) {
                 checkLegalTypography(textFrame);
+                checkLegalParagraphSetup(textFrame);
 
                 if (textFrame.textFramePreferences.autoSizingType === AutoSizingTypeEnum.OFF) {
                     hasLegalWithoutAutosize = true;
@@ -781,6 +983,15 @@ var pageHeightMm = Math.round(measurementToMm(doc.documentPreferences.pageHeight
 var docArea = Math.round(pageWidthMm * pageHeightMm);
 var requiredPPI = isWebPixelDocument ? SCREEN_REQUIRED_PPI : getMinPPI(docArea);
 
+function formatFileSizeMb(mb) {
+    var n = Math.round(Number(mb) * 10) / 10;
+    return String(n).replace(".", ",") + " MB";
+}
+
+function formatImagePpiWarning(ppi, required, mb) {
+    return "⚠ PPI " + ppi + " (" + required + "), " + formatFileSizeMb(mb);
+}
+
 // Функция проверки изображений на странице
 function checkImagesOnPage(page, pageName) {
     // Перебираем все объекты на странице
@@ -788,65 +999,45 @@ function checkImagesOnPage(page, pageName) {
         var item = page.allPageItems[j];
         
         try {
+            if (isFigmaReferenceOverlayItem(item)) continue;
+            if (itemIsLinkVariablePlaceholder(item)) continue;
             // Проверяем есть ли у объекта ссылка
             if (item.itemLink) {
                 var link = item.itemLink;
-                var linkName = link.name;
                 var fileSize = link.size / 1048576; // Переводим в МБ
-                var fileSizeFormatted = Math.round(fileSize * 100) / 100; // Округляем до 2 знаков
-                var hasWarning = false;
-                var warningText = "";
+                var firstPPI = 0;
+                var hasPpiValue = false;
+                var ppiBad = false;
 
-                // Проверяем PPI для всех изображений
                 if (item.effectivePpi) {
-                    var firstPPI = Math.round(item.effectivePpi[0]); // Берем только первое число и округляем
-                    
-                    // Рассчитываем 15% допуск
+                    firstPPI = Math.round(item.effectivePpi[0]);
+                    hasPpiValue = true;
+
                     var tolerance = requiredPPI * 0.15;
                     var upperLimit = requiredPPI + tolerance;
                     var lowerLimit = requiredPPI - tolerance;
 
-                    // Проверяем PPI с учетом допуска.
-                    // Для web-макетов в пикселях высокий PPI не является печатной проблемой.
                     if (!isWebPixelDocument && firstPPI > upperLimit) {
-                        // Высокий PPI ок, если файл легче 10 МБ — незачем дёргать.
-                        if (fileSize >= 10) {
+                        if (fileSize > 15) {
                             hasPPIWarning = true;
-                            hasWarning = true;
-                            warningText += "⚠ слишком высокий PPI: " + firstPPI + " (требуется: " + requiredPPI + "), вес файла: " + fileSizeFormatted + " МБ\n";
+                            ppiBad = true;
                         }
                     } else if (firstPPI < lowerLimit) {
                         hasPPIWarning = true;
-                        hasWarning = true;
-                        if (isWebPixelDocument) {
-                            warningText += "⚠ слишком низкий PPI для web-макета: " + firstPPI + " (требуется экранный: " + requiredPPI + ")\n";
-                        } else {
-                            warningText += "⚠ слишком низкий PPI: " + firstPPI + " (требуется: " + requiredPPI + ")\n";
-                        }
+                        ppiBad = true;
                     }
                 }
 
-                // Проверяем размер файла для всех типов ссылок
-                if (fileSize > 18) {
-                    hasFileSizeWarning = true;
-                    hasWarning = true;
-                    
-                    // Проверяем формат файла
-                    var fileFormat = linkName.toLowerCase();
-                    if (fileFormat.indexOf('.pdf') !== -1) {
-                        warningText += "⚠ слишком большой размер: " + fileSizeFormatted + " МБ. Файл в формате PDF, пересохраните в JPG\n";
-                    } else if (fileFormat.indexOf('.png') !== -1) {
-                        warningText += "⚠ слишком большой размер: " + fileSizeFormatted + " МБ. Файл в формате PNG, пересохраните в JPG\n";
-                    } else if (fileFormat.indexOf('.jpg') === -1 && fileFormat.indexOf('.jpeg') === -1) {
-                        warningText += "⚠ слишком большой размер: " + fileSizeFormatted + " МБ. Файл не в формате JPG, возможно это причина большого веса. Пересохраните в JPG\n";
+                var sizeBad = fileSize > 18;
+                if (sizeBad) hasFileSizeWarning = true;
+
+                if (ppiBad || sizeBad) {
+                    ppiReport += link.name + "\n";
+                    if (hasPpiValue) {
+                        ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize) + "\n";
                     } else {
-                        warningText += "⚠ слишком большой размер: " + fileSizeFormatted + " МБ (максимум: 18 МБ)\n";
+                        ppiReport += "⚠ " + formatFileSizeMb(fileSize) + "\n";
                     }
-                }
-
-                // Добавляем в отчет только если есть предупреждения
-                if (hasWarning) {
-                    ppiReport += linkName + "\n" + warningText + "\n";
                 }
             }
         } catch(e) {}
@@ -1061,6 +1252,27 @@ var allowedCountryByLower = {
     "country.hrphone": "country.hrPhone"
 };
 
+// Префикс без учёта регистра: Figma часто даёт [COMPANY.NAME], а не [company.name].
+function innerStartsWithCi(inner, prefix) {
+    return String(inner || "").toLowerCase().indexOf(String(prefix || "").toLowerCase()) === 0;
+}
+
+function hasPrefixFromList(inner, prefixes) {
+    for (var i = 0; i < prefixes.length; i++) {
+        if (innerStartsWithCi(inner, prefixes[i])) return true;
+    }
+    return false;
+}
+
+function canonicalSystemVariableName(inner, typoMapArg, companyMap, branchMap, countryMap) {
+    var lower = String(inner || "").toLowerCase();
+    if (typoMapArg && typoMapArg[lower]) return typoMapArg[lower];
+    if (lower.indexOf("company.") === 0) return (companyMap && companyMap[lower]) || null;
+    if (lower.indexOf("branch.") === 0) return (branchMap && branchMap[lower]) || null;
+    if (lower.indexOf("country.") === 0) return (countryMap && countryMap[lower]) || null;
+    return null;
+}
+
 // Дополнительная проверка недопустимых системных переменных через явные GREP-поисковые запросы
 try {
     // company.*
@@ -1185,74 +1397,42 @@ for (var i = 0; i < foundVars.length; i++) {
     if (inner.split('.').length > 2) {
         multipleDotsVariables.push(varText);
     }
-    // Проверка на допустимый префикс и наличие точки
-    var hasAllowedPrefix = false;
-    var isSystemPrefix = false;
-    for (var p = 0; p < allowedPrefixes.length; p++) {
-        if (inner.indexOf(allowedPrefixes[p]) === 0) {
-            hasAllowedPrefix = true;
-            break;
-        }
-    }
-    for (var sp = 0; sp < systemPrefixes.length; sp++) {
-        if (inner.indexOf(systemPrefixes[sp]) === 0) {
-            isSystemPrefix = true;
-            break;
+    // Проверка на допустимый префикс и наличие точки.
+    // company/branch/country — без учёта регистра (капс из Figma).
+    // pack/layout/terminal — как написано: канон неизвестен, не угадываем camelCase.
+    var isSystemPrefix = hasPrefixFromList(inner, systemPrefixes);
+    var hasAllowedPrefix = isSystemPrefix;
+    if (!hasAllowedPrefix) {
+        for (var p = 0; p < allowedPrefixes.length; p++) {
+            if (inner.indexOf(allowedPrefixes[p]) === 0) {
+                hasAllowedPrefix = true;
+                break;
+            }
         }
     }
     if (!hasAllowedPrefix || inner.indexOf(".") === -1) {
         invalidTypeOrDotVariables.push(varText);
     }
 
-    // Новая проверка: если это системная переменная, проверяем ее по полному списку
+    // Системная переменная с чужим регистром / опечаткой — в автозамену, не в «недопустимые».
     if (isSystemPrefix && !allSystemVariables[inner]) {
         var innerLower = inner.toLowerCase();
-        var suggestion = null;
+        var suggestion = canonicalSystemVariableName(
+            inner,
+            typoMap,
+            allowedCompanyByLower,
+            allowedBranchByLower,
+            allowedCountryByLower
+        );
 
-        // Строгая валидация для company.*
-        if (inner.indexOf("company.") === 0) {
-            // Популярные опечатки сначала
-            if (typoMap[innerLower]) {
-                suggestion = typoMap[innerLower];
-            } else {
-                var canonical = allowedCompanyByLower[innerLower];
-                if (canonical) {
-                    // Отличается только регистр — нормализуем
-                    suggestion = canonical;
-                } else {
-                    // Любая другая company.* — запрещена
-                    disallowedCompanyVariables.push(varText);
-                }
-            }
-        } else if (inner.indexOf("branch.") === 0) {
-            var canonicalBranch = allowedBranchByLower[innerLower];
-            if (canonicalBranch) {
-                suggestion = canonicalBranch;
-            } else {
-                disallowedBranchVariables.push(varText);
-            }
-        } else if (inner.indexOf("country.") === 0) {
-            var canonicalCountry = allowedCountryByLower[innerLower];
-            if (canonicalCountry) {
-                suggestion = canonicalCountry;
-            } else {
-                disallowedCountryVariables.push(varText);
-            }
-        } else {
-            // Для прочих системных префиксов — прежняя логика: опечатки/регистры/unknown
-            if (typoMap[innerLower]) {
-                suggestion = typoMap[innerLower];
-            } else {
-                for (var k = 0; k < requiredBracketsVariables.length; k++) {
-                    if (innerLower === requiredBracketsVariables[k].toLowerCase()) {
-                        suggestion = requiredBracketsVariables[k];
-                        break;
-                    }
-                }
-            }
-            if (!suggestion) {
-                unknownSystemVariables.push(varText);
-            }
+        if (innerLower.indexOf("company.") === 0) {
+            if (!suggestion) disallowedCompanyVariables.push(varText);
+        } else if (innerLower.indexOf("branch.") === 0) {
+            if (!suggestion) disallowedBranchVariables.push(varText);
+        } else if (innerLower.indexOf("country.") === 0) {
+            if (!suggestion) disallowedCountryVariables.push(varText);
+        } else if (!suggestion) {
+            unknownSystemVariables.push(varText);
         }
 
         misspelledSystemVariables.push({
@@ -1305,6 +1485,7 @@ var REPORT_LINKS_NOT_IN_FOLDER = false;
 // Проверка на слетевшие или недоступные линки
 for (var i = 0; i < doc.links.length; i++) {
     var link = doc.links[i];
+    if (isFigmaReferenceOverlayLink(link)) continue;
     if (link.status === LinkStatus.LINK_MISSING || link.status === LinkStatus.LINK_INACCESSIBLE) {
         missingLinks.push(link.name);
     }
@@ -1460,8 +1641,212 @@ function persistPrepReport(reportText) {
 }
 
 function reportIsAllOk(text) {
-    var s = String(text);
+    var s = String(text || "");
     return s.indexOf("\u26a0") === -1 && s.indexOf("\u0412\u0441\u0435 \u043e\u043a") !== -1;
+}
+
+function isBlankReport(text) {
+    return String(text || "").replace(/\s+/g, "") === "";
+}
+
+function joinPrepReport(errorsText, logText) {
+    var e = String(errorsText || "").replace(/\s+$/, "");
+    var l = String(logText || "").replace(/\s+$/, "");
+    if (!l) return e;
+    if (!e) return l;
+    return e + "\n\n" + l;
+}
+
+function countVisualLines(text, charsPerLine) {
+    var rawLines = String(text || "").split("\n");
+    var visualLines = 0;
+    var c = Math.max(1, charsPerLine || 28);
+    var i, lineLen;
+    for (i = 0; i < rawLines.length; i++) {
+        lineLen = rawLines[i].length;
+        visualLines += lineLen <= 0 ? 1 : Math.max(1, Math.ceil(lineLen / c));
+    }
+    return visualLines;
+}
+
+function paginateReportPages(text, maxVisualLines, charsPerLine) {
+    var maxL = Math.max(1, maxVisualLines || 20);
+    var c = Math.max(1, charsPerLine || 28);
+    var rawLines = String(text || "").split("\n");
+    var pages = [];
+    var cur = [];
+    var curVis = 0;
+    var i, lineLen, vis;
+    function flush() {
+        if (cur.length === 0) return;
+        pages.push(cur.join("\n"));
+        cur = [];
+        curVis = 0;
+    }
+    for (i = 0; i < rawLines.length; i++) {
+        lineLen = rawLines[i].length;
+        vis = lineLen <= 0 ? 1 : Math.max(1, Math.ceil(lineLen / c));
+        if (cur.length > 0 && curVis + vis > maxL) {
+            flush();
+        }
+        cur.push(rawLines[i]);
+        curVis += vis;
+        if (curVis >= maxL) {
+            flush();
+        }
+    }
+    flush();
+    if (pages.length === 0) pages.push("");
+    return pages;
+}
+
+function dialogBoxMetrics() {
+    var lineH = 18;
+    var padH = 28;
+    var boxW = 320;
+    var maxH = 360;
+    try {
+        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
+            var scr = $.screens[0];
+            var scrH = scr.bottom - scr.top;
+            var scrW = scr.right - scr.left;
+            if (scrW > 0) boxW = Math.min(340, Math.max(280, Math.floor(scrW * 0.20)));
+            if (scrH > 0) maxH = Math.min(360, Math.max(320, Math.floor(scrH * 0.34)));
+        }
+    } catch (eScr) {}
+    return {
+        lineH: lineH,
+        padH: padH,
+        boxW: boxW,
+        maxH: maxH,
+        winW: boxW + 32,
+        winH: maxH + 80,
+        paneMargins: [8, 8, 8, 8],
+        charsPerLine: Math.max(28, Math.floor(boxW / 7))
+    };
+}
+
+function applyFixedDialogSize(w, metrics) {
+    w.preferredSize = [metrics.winW, metrics.winH];
+    try {
+        w.minimumSize = [metrics.winW, metrics.winH];
+        w.maximumSize = [metrics.winW, metrics.winH];
+    } catch (eSize) {}
+}
+
+function addDialogOkButton(parent, metrics) {
+    var okRow = parent.add("group");
+    okRow.orientation = "row";
+    okRow.alignment = ["fill", "bottom"];
+    okRow.alignChildren = ["right", "center"];
+    var okBtn = okRow.add("button", undefined, "OK", {name: "ok"});
+    okBtn.preferredSize = [80, 24];
+    okBtn.minimumSize = [80, 24];
+    return okBtn;
+}
+
+function addPagedReportPane(parent, text, metrics) {
+    var boxW = metrics.boxW;
+    var maxH = metrics.maxH;
+    var lineH = metrics.lineH;
+    var padH = metrics.padH;
+    var charsPerLine = metrics.charsPerLine;
+    var maxLines = Math.max(4, Math.floor((maxH - padH) / lineH));
+    var pages = paginateReportPages(text, maxLines, charsPerLine);
+    var pageIdx = 0;
+    var boxH = maxH;
+
+    var et = parent.add("statictext", undefined, pages[0], {multiline: true});
+    et.preferredSize = [boxW, boxH];
+    et.minimumSize = [boxW, boxH];
+    et.alignment = ["fill", "top"];
+
+    if (pages.length > 1) {
+        var nav = parent.add("group");
+        nav.alignment = ["fill", "bottom"];
+        nav.orientation = "row";
+        nav.alignChildren = ["center", "center"];
+        var prev = nav.add("button", undefined, "<");
+        prev.preferredSize = [32, 24];
+        var lab = nav.add("statictext", undefined, "1 / " + pages.length);
+        lab.preferredSize = [64, 22];
+        lab.justify = "center";
+        var next = nav.add("button", undefined, ">");
+        next.preferredSize = [32, 24];
+
+        function refreshPage() {
+            et.text = pages[pageIdx];
+            lab.text = (pageIdx + 1) + " / " + pages.length;
+            prev.enabled = pageIdx > 0;
+            next.enabled = pageIdx < pages.length - 1;
+        }
+        prev.onClick = function () {
+            if (pageIdx > 0) {
+                pageIdx--;
+                refreshPage();
+            }
+        };
+        next.onClick = function () {
+            if (pageIdx < pages.length - 1) {
+                pageIdx++;
+                refreshPage();
+            }
+        };
+        refreshPage();
+    }
+}
+
+function addReportTabs(parent, errorsText, logText, metrics) {
+    var logShow = String(logText || "").replace(/\s+$/, "");
+    var paneMargins = metrics.paneMargins;
+
+    if (isBlankReport(logShow)) {
+        var pane = parent.add("group");
+        pane.orientation = "column";
+        pane.alignChildren = ["fill", "top"];
+        pane.alignment = ["fill", "top"];
+        pane.margins = paneMargins;
+        addPagedReportPane(pane, errorsText, metrics);
+        return pane;
+    }
+
+    var tpanel = parent.add("tabbedpanel");
+    tpanel.alignChildren = ["fill", "fill"];
+    tpanel.preferredSize = [metrics.boxW + 24, metrics.maxH + 56];
+
+    var tabErr = tpanel.add("tab", undefined, "Важное");
+    tabErr.orientation = "column";
+    tabErr.alignChildren = ["fill", "top"];
+    tabErr.margins = paneMargins;
+    tabErr.spacing = 6;
+    addPagedReportPane(tabErr, errorsText, metrics);
+
+    var tabLog = tpanel.add("tab", undefined, "Неважное");
+    tabLog.orientation = "column";
+    tabLog.alignChildren = ["fill", "top"];
+    tabLog.margins = paneMargins;
+    tabLog.spacing = 6;
+    addPagedReportPane(tabLog, logShow, metrics);
+
+    tpanel.selection = tabErr;
+    return tpanel;
+}
+
+function showTabbedReportDialog(errorsText, logText) {
+    var metrics = dialogBoxMetrics();
+    var w = new Window("dialog", "Terminal Preparator");
+    w.orientation = "column";
+    w.alignChildren = ["fill", "fill"];
+    w.margins = 8;
+    w.spacing = 8;
+
+    addReportTabs(w, errorsText, logText, metrics);
+
+    addDialogOkButton(w, metrics);
+
+    applyFixedDialogSize(w, metrics);
+    w.center();
+    w.show();
 }
 
 function stopPrepDance() {
@@ -1643,34 +2028,57 @@ function setMonoFont(control, size) {
     } catch (e2) {}
 }
 
-function showAllOkDanceDialog(reportText) {
+function showAllOkDanceDialog(reportText, logText) {
     stopPrepDance();
 
-    var boxW = 240;
-    try {
-        if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
-            var scrW = $.screens[0].right - $.screens[0].left;
-            if (scrW > 0) boxW = Math.min(250, Math.max(220, Math.floor(scrW * 0.15)));
-        }
-    } catch (eScr) {}
+    var metrics = dialogBoxMetrics();
+    var boxW = metrics.boxW;
+    var dancerH = metrics.maxH - 48;
 
     var fwCols = Math.max(46, Math.floor(boxW / 5));
-    var fwRows = 22;
+    var fwRows = Math.max(28, Math.floor(dancerH / 12));
     var sim = createFireworksSim(fwCols, fwRows);
+    var logStr = String(logText || "").replace(/\s+$/, "");
 
     var w = new Window("palette", "Terminal Preparator");
     w.orientation = "column";
-    w.alignChildren = ["fill", "top"];
+    w.alignChildren = ["fill", "fill"];
     w.margins = 8;
-    w.spacing = 2;
-    w.maximumSize = [boxW + 16, 2000];
+    w.spacing = 8;
 
-    var et = w.add("statictext", undefined, reportText, {multiline: true});
+    var okParent = w;
+    if (logStr) {
+        var tpanel = w.add("tabbedpanel");
+        tpanel.alignChildren = ["fill", "fill"];
+        tpanel.preferredSize = [metrics.boxW + 24, metrics.maxH + 56];
+        var tabOk = tpanel.add("tab", undefined, "Важное");
+        tabOk.orientation = "column";
+        tabOk.alignChildren = ["fill", "top"];
+        tabOk.margins = metrics.paneMargins;
+        tabOk.spacing = 6;
+        var tabLog = tpanel.add("tab", undefined, "Неважное");
+        tabLog.orientation = "column";
+        tabLog.alignChildren = ["fill", "top"];
+        tabLog.margins = metrics.paneMargins;
+        tabLog.spacing = 6;
+        addPagedReportPane(tabLog, logStr, metrics);
+        tpanel.selection = tabOk;
+        okParent = tabOk;
+    } else {
+        var pane = w.add("group");
+        pane.orientation = "column";
+        pane.alignChildren = ["fill", "top"];
+        pane.alignment = ["fill", "fill"];
+        pane.margins = metrics.paneMargins;
+        okParent = pane;
+    }
+
+    var et = okParent.add("statictext", undefined, reportText, {multiline: true});
     et.preferredSize = [boxW, 22];
     et.alignment = ["fill", "top"];
 
-    var dancer = w.add("statictext", undefined, sim.step(), {multiline: true});
-    dancer.preferredSize = [boxW, 260];
+    var dancer = okParent.add("statictext", undefined, sim.step(), {multiline: true});
+    dancer.preferredSize = [boxW, dancerH];
     dancer.alignment = ["fill", "top"];
     setMonoFont(dancer, 8);
     try {
@@ -1681,9 +2089,7 @@ function showAllOkDanceDialog(reportText) {
         );
     } catch (eFg) {}
 
-    var okBtn = w.add("button", undefined, "OK", {name: "ok"});
-    okBtn.alignment = ["fill", "bottom"];
-    okBtn.preferredSize = [boxW, 28];
+    var okBtn = addDialogOkButton(w, metrics);
     okBtn.onClick = function () {
         stopPrepDance();
         w.close();
@@ -1709,6 +2115,7 @@ function showAllOkDanceDialog(reportText) {
         }
     });
 
+    applyFixedDialogSize(w, metrics);
     w.center();
     w.show();
     try {
@@ -1716,90 +2123,24 @@ function showAllOkDanceDialog(reportText) {
     } catch (eKick) {}
 }
 
-function showReportDialog(reportText) {
+function showReportDialog(errorsText, logText) {
+    var reportText = joinPrepReport(errorsText, logText);
     persistPrepReport(reportText);
     stopPrepDance();
     if (isSilentPreparatorRun()) {
         try { $.writeln(reportText); } catch (eLog) {}
         return;
     }
-    if (reportIsAllOk(reportText)) {
+    if (reportIsAllOk(errorsText)) {
         try {
-            showAllOkDanceDialog(reportText);
+            showAllOkDanceDialog(errorsText, logText);
             return;
         } catch (eDance) {
             stopPrepDance();
         }
     }
     try {
-        var w = new Window("dialog", "Terminal Preparator");
-        w.orientation = "column";
-        w.alignChildren = ["fill", "fill"];
-        w.margins = 12;
-        w.spacing = 8;
-
-        // 1.47: уже и ниже, высота по числу строк.
-        // 1.48: короткий отчёт — statictext (без скроллбара).
-        // 1.49: ещё уже, чтобы окно было скорее вертикальным.
-
-        var lineCount = 1;
-        try {
-            lineCount = String(reportText).split("\n").length;
-        } catch (eLc) {}
-
-        var lineH = 18;
-        var padH = 28;
-        var boxW = 340;
-        var maxH = 420;
-        try {
-            if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
-                var scr = $.screens[0];
-                var scrH = scr.bottom - scr.top;
-                var scrW = scr.right - scr.left;
-                if (scrW > 0) boxW = Math.min(360, Math.max(300, Math.floor(scrW * 0.22)));
-                if (scrH > 0) maxH = Math.min(420, Math.floor(scrH * 0.42));
-            }
-        } catch (eScr) {}
-
-        var visualLines = lineCount;
-        try {
-            var charsPerLine = Math.max(28, Math.floor(boxW / 7));
-            var rawLines = String(reportText).split("\n");
-            visualLines = 0;
-            for (var li = 0; li < rawLines.length; li++) {
-                var lineLen = rawLines[li].length;
-                visualLines += lineLen <= 0 ? 1 : Math.max(1, Math.ceil(lineLen / charsPerLine));
-            }
-        } catch (eVl) {
-            visualLines = lineCount;
-        }
-        var neededH = padH + visualLines * lineH;
-
-        var needsScroll = neededH > maxH;
-        var boxH = needsScroll ? maxH : Math.max(90, neededH);
-
-        // Win ScriptUI: у multiline edittext скроллбар часто есть всегда.
-        // Короткий отчёт — statictext (без полосы). Простыня — edittext со скроллом.
-        var et;
-        if (needsScroll) {
-            et = w.add("edittext", undefined, reportText, {
-                multiline: true,
-                readonly: true,
-                scrolling: true
-            });
-        } else {
-            et = w.add("statictext", undefined, reportText, {multiline: true});
-        }
-        et.preferredSize = [boxW, boxH];
-        et.minimumSize = [Math.min(360, boxW), needsScroll ? 80 : boxH];
-        et.alignment = ["fill", "top"];
-
-        var row = w.add("group");
-        row.alignment = ["right", "bottom"];
-        row.add("button", undefined, "OK", {name: "ok"});
-
-        w.center();
-        w.show();
+        showTabbedReportDialog(errorsText, logText);
     } catch (eWin) {
         if (isSilentPreparatorRun()) return;
         alert(reportText);
@@ -1812,6 +2153,7 @@ if (linksFolderPath) {
     for (var i = 0; i < doc.links.length; i++) {
         var link = doc.links[i];
         if (link.name.indexOf('QR Code') === 0) continue;
+        if (isFigmaReferenceOverlayLink(link)) continue;
         try {
             var filePath = link.filePath;
             var imageFolder = normalizeDriveLetterPath(getFolderPath(filePath));
@@ -2226,8 +2568,9 @@ try {
 }
 // --- КОНЕЦ ПРОВЕРКИ ПОВТОРОВ ---
 
-// 3. Формируем предупреждения
-var report = "";
+// 3. Формируем предупреждения: ошибки сразу, автозамены и прочий шум — в лог.
+var errorReport = "";
+var logReport = "";
 
 // Группируем ошибки по QR-кодам
 var qrKeys = [];
@@ -2241,11 +2584,11 @@ if (qrKeys.length > 0) {
         var qrName = qrKeys[i];
         var errors = qrErrorMap[qrName];
         if (errors.length > 0) {
-            report += "QR-код " + qrName + "\n";
+            errorReport += "QR-код " + qrName + "\n";
             for (var j = 0; j < errors.length; j++) {
-                report += errors[j] + "\n";
+                errorReport += errors[j] + "\n";
             }
-            report += "\n";
+            errorReport += "\n";
         }
     }
 }
@@ -2303,6 +2646,7 @@ try {
     for (var pg = 0; pg < doc.pages.length && scanned < blackScanLimit; pg++) {
         var items = doc.pages[pg].allPageItems;
         for (var ii = 0; ii < items.length && scanned < blackScanLimit; ii++) {
+            if (isFigmaReferenceOverlayItem(items[ii])) continue;
             noteBlackFromItem(items[ii], mixedBlackKinds);
             scanned++;
         }
@@ -2338,22 +2682,22 @@ if (mixedBlackLabels.length >= 2) {
 // 1.46: «не из Links» в отчёт не кладём (REPORT_LINKS_NOT_IN_FOLDER).
 // --- ДОБАВЛЕНО: Явные предупреждения по линкам и папке Links ---
 if (missingLinks.length > 0) {
-    report += "⚠ В макете есть слетевшие или отсутствующие линки:\n";
+    errorReport += "⚠ В макете есть слетевшие или отсутствующие линки:\n";
     for (var i = 0; i < missingLinks.length; i++) {
-        report += "   • " + missingLinks[i] + "\n";
+        errorReport += "   • " + missingLinks[i] + "\n";
     }
-    report += "\n";
+    errorReport += "\n";
 }
 
 if (REPORT_LINKS_NOT_IN_FOLDER && notInLinksFolder.length > 0) {
-    report += formatNotInLinksReport(notInLinksFolder, normalizedLinksFolder, 5);
-    report += "\n";
+    errorReport += formatNotInLinksReport(notInLinksFolder, normalizedLinksFolder, 5);
+    errorReport += "\n";
 }
 
 if (comparisonDetails.length > 0) {
-    report += '\nПроверка каждой картинки относительно папки Links:\n';
+    errorReport += '\nПроверка каждой картинки относительно папки Links:\n';
     for (var i = 0; i < comparisonDetails.length; i++) {
-        report += '   ' + comparisonDetails[i] + '\n';
+        errorReport += '   ' + comparisonDetails[i] + '\n';
     }
 }
 
@@ -2363,6 +2707,8 @@ if (
     bleedWarning ||
     problematicFontsFound ||
     hasLegalWithoutAutosize ||
+    hasLegalWithoutParagraphSetup ||
+    legalFramesWithWidthAutoSize.length > 0 ||
     legalFramesWithoutHyphenation.length > 0 ||
     legalFramesWithoutRussianLanguage.length > 0 ||
     framesWithoutAutosize.length > 0 ||
@@ -2373,7 +2719,6 @@ if (
     disallowedCountryVariables.length > 0 ||
     multipleDotsVariables.length > 0 ||
     unknownSystemVariables.length > 0 ||
-    systemVariablesFixedCount > 0 ||
     variablesOnHiddenLayers.length > 0 ||
     missingLinks.length > 0 ||
     (REPORT_LINKS_NOT_IN_FOLDER && notInLinksFolder.length > 0) ||
@@ -2389,153 +2734,108 @@ if (
 ) {
     //report = "⚠ Файл не готов к Терминалу!\n\n";
     if (mixedBlackReport) {
-        report += mixedBlackReport;
+        errorReport += mixedBlackReport;
     }
     
     if (bleedWarning) {
-        report += "⚠ Отсутствуют блиды! Добавьте, если это не ценники или наклейка\n\n";
-    }
-
-    if (systemVariablesFixedCount > 0) {
-        report += "⚠ Найдены и исправлены опечатки в системных переменных:\n" + fixedSystemVariablesReport + "\n";
+        errorReport += "⚠ Отсутствуют блиды\n\n";
     }
 
     if (repeatedWordsFound.length > 0) {
-        report += "⚠ Найдены повторяющиеся слова или фразы:\n";
+        errorReport += "⚠ Найдены повторяющиеся слова или фразы:\n";
         for (var i = 0; i < repeatedWordsFound.length; i++) {
-            report += "   • " + repeatedWordsFound[i] + "\n";
+            errorReport += "   • " + repeatedWordsFound[i] + "\n";
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
     if (qrNameMistakes.length > 0) {
-        report += "⚠ Обнаружены объекты, похожие на переменные Терминала, но без поддерживаемого хэштега #qr или #link:\n";
+        errorReport += "⚠ Обнаружены объекты, похожие на переменные Терминала, но без поддерживаемого хэштега #qr или #link:\n";
         for (var i = 0; i < qrNameMistakes.length; i++) {
             var name = qrNameMistakes[i];
-            report += "   • Кажется, в макете есть объект с названием «" + name + "», но в нем нет хэштега #qr или #link\n";
+            errorReport += "   • Кажется, в макете есть объект с названием «" + name + "», но в нем нет хэштега #qr или #link\n";
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
     if (linkVariableWithoutLinkErrors.length > 0) {
-        report += "⚠ Обнаружены link-переменные без привязанного файла:\n";
+        errorReport += "⚠ Обнаружены link-переменные без привязанного файла:\n";
         for (var i = 0; i < linkVariableWithoutLinkErrors.length; i++) {
-            report += "   • Для объекта «" + linkVariableWithoutLinkErrors[i] + "» нужен размещенный файл-линк\n";
+            errorReport += "   • Для объекта «" + linkVariableWithoutLinkErrors[i] + "» нужен размещенный файл-линк\n";
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
     if (missingSwatchErrors.length > 0) {
-        report += "⚠ Обнаружены QR-объекты, для которых отсутствуют одноименные свотчи:\n";
+        errorReport += "⚠ Обнаружены QR-объекты, для которых отсутствуют одноименные свотчи:\n";
         for(var i = 0; i < missingSwatchErrors.length; i++) {
             var objName = missingSwatchErrors[i];
             var swatchName = objName.slice(1, -1);
-            report += "   • Для объекта «" + objName + "» не найден свотч с именем «" + swatchName + "»\n";
+            errorReport += "   • Для объекта «" + objName + "» не найден свотч с именем «" + swatchName + "»\n";
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
     if (variablesOnHiddenLayers.length > 0) {
-        report += "⚠ На скрытых слоях или в скрытых группах найдены переменные, которые лучше удалить:\n";
+        errorReport += "⚠ На скрытых слоях или в скрытых группах найдены переменные, которые лучше удалить:\n";
         for (var i = 0; i < variablesOnHiddenLayers.length; i++) {
-            report += "   • " + variablesOnHiddenLayers[i] + "\n";
+            errorReport += "   • " + variablesOnHiddenLayers[i] + "\n";
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
     if (problematicFontsFound) {
-        report += "⚠ В макете используются проблемные шрифты:\n";
+        errorReport += "⚠ В макете используются проблемные шрифты:\n";
         for (var font in problematicFonts) {
             if (problematicFonts[font]) {
-                report += "   • " + font + " - замените этот шрифт\n";
+                errorReport += "   • " + font + " - замените этот шрифт\n";
             }
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
     if (missingFontsFound) {
-        report += "⚠ В макете отсутствуют шрифты. Установите их или замените:\n";
+        errorReport += "⚠ В макете отсутствуют шрифты. Установите их или замените:\n";
         for (var fontName in missingFontsData) {
             if (missingFontsData.hasOwnProperty(fontName)) {
                 var snippets = missingFontsData[fontName];
                 if (snippets.length > 0) {
-                    report += "   • " + fontName + "\n";
+                    errorReport += "   • " + fontName + "\n";
                     for (var i = 0; i < snippets.length; i++) {
-                        report += "     - " + snippets[i] + "\n";
+                        errorReport += "     - " + snippets[i] + "\n";
                     }
                 }
             }
         }
-        report += "\n";
+        errorReport += "\n";
     }
 
-    // Выводим сообщения об отсутствии auto-size
-    if (hasLegalWithoutAutosize) {
-        report += "⚠ У лигала не включен авто-сайз\n\n";
-    }
+    // Лигал — один блок в конце отчёта, не отдельные ⚠.
 
-    if (legalFramesWithoutHyphenation.length > 0) {
-        report += "⚠ В лигале не включены переносы:\n";
-        for (var i = 0; i < legalFramesWithoutHyphenation.length; i++) {
-            report += "Фрагмент: «" + legalFramesWithoutHyphenation[i].fragment + "»\n";
-        }
-        report += "\n";
-    }
-
-    if (legalFramesWithoutRussianLanguage.length > 0) {
-        report += "⚠ В лигале найден текст не на русском языке:\n";
-        for (var i = 0; i < legalFramesWithoutRussianLanguage.length; i++) {
-            report += "Фрагмент: «" + legalFramesWithoutRussianLanguage[i].fragment + "»\n";
-            report += "Язык сейчас: " + legalFramesWithoutRussianLanguage[i].language + "\n";
-        }
-        report += "\n";
-    }
-    
     if (framesWithoutAutosize.length > 0) {
-        // Создаем объект для отслеживания уникальных переменных
         var uniqueVariables = {};
         for (var i = 0; i < framesWithoutAutosize.length; i++) {
             uniqueVariables[framesWithoutAutosize[i]] = true;
         }
-        
-        // Выводим сообщения для каждой уникальной переменной
         for (var variable in uniqueVariables) {
-            report += "⚠ У блока с переменной " + variable + " нет авто-сайза\n";
+            errorReport += "⚠ У блока с переменной " + variable + " нет авто-сайза\n";
         }
     }
 
-    if (invalidVariables.length > 0) {
-        report += "⚠ В названии переменных не поддерживаются пробел, дефис, тире, нижнее подчеркивание, запятые и амперсанд: " + invalidVariables.join(", ") + "\n\n";
-    }
-    if (invalidTypeOrDotVariables.length > 0) {
-        report += "⚠ Переменная должна быть только типа country, company, branch, pack, layout или terminal и дальше должна быть точка. Тут ошибка: " + invalidTypeOrDotVariables.join(", ") + "\n\n";
-    }
-    if (disallowedBranchVariables.length > 0) {
-        report += "⚠ Недопустимые branch.* переменные. Разрешены только: [branch.addressShort], [branch.addressDetailsCity], [branch.addressDetailsStreetTypeDecrease], [branch.addressDetailsStreetTypeName], [branch.addressDetailsStreetName], [branch.addressDetailsHouseNumber], [branch.publicWiFiPassword], [branch.publicWiFiName], [branch.vk], [branch.instagram], [branch.workingTime].\n";
-        for (var i = 0; i < disallowedBranchVariables.length; i++) {
-            report += "   • " + disallowedBranchVariables[i] + "\n";
+    var badVarNames = [];
+    addUniqueNames(badVarNames, invalidTypeOrDotVariables);
+    addUniqueNames(badVarNames, invalidVariables);
+    addUniqueNames(badVarNames, multipleDotsVariables);
+    addUniqueNames(badVarNames, disallowedBranchVariables);
+    addUniqueNames(badVarNames, disallowedCompanyVariables);
+    addUniqueNames(badVarNames, disallowedCountryVariables);
+    addUniqueNames(badVarNames, unknownSystemVariables);
+    if (badVarNames.length > 0) {
+        errorReport += "Недопустимые переменные\n";
+        for (var bv = 0; bv < badVarNames.length; bv++) {
+            errorReport += "⚠ " + badVarNames[bv] + "\n";
         }
-        report += "\n";
-    }
-    if (disallowedCountryVariables.length > 0) {
-        report += "⚠ Недопустимые country.* переменные. Разрешены только: [country.currencySign], [country.mainWebsite], [country.phone], [country.hrWebsite], [country.hrPhone].\n";
-        for (var i = 0; i < disallowedCountryVariables.length; i++) {
-            report += "   • " + disallowedCountryVariables[i] + "\n";
-        }
-        report += "\n";
-    }
-    if (disallowedCompanyVariables.length > 0) {
-        report += "⚠ Недопустимые company.* переменные. Разрешены только: [company.name], [company.legalAddress], [company.stateNumber], [company.stateNumberLong].\n";
-        for (var i = 0; i < disallowedCompanyVariables.length; i++) {
-            report += "   • " + disallowedCompanyVariables[i] + "\n";
-        }
-        report += "\n";
-    }
-    if (unknownSystemVariables.length > 0) {
-        report += "⚠ Обнаружены неизвестные системные переменные (возможно, опечатка): " + unknownSystemVariables.join(", ") + "\n\n";
-    }
-    if (multipleDotsVariables.length > 0) {
-        report += "⚠ В переменной может быть только одна точка, разделяющая тип и название. У вас найдена ошибка: " + multipleDotsVariables.join(", ") + ". Переменная должна начинаться с одного из типов: country., company., branch., pack., layout. или terminal.\n\n";
+        errorReport += "\n";
     }
     if (websiteVariablesFound.length > 0) {
         var uniqueWebsites = {};
@@ -2548,103 +2848,102 @@ if (
                 uniqueWebsiteKeys.push(key);
             }
         }
-        report += "⚠ Обнаружены переменные, содержащие 'website'. Сайт Додо Пиццы должен задаваться через системную переменную [country.mainWebsite].\n";
-        report += "   Найденные переменные: " + uniqueWebsiteKeys.join(", ") + "\n\n";
+        errorReport += "⚠ Обнаружены переменные, содержащие 'website'. Сайт Додо Пиццы должен задаваться через системную переменную [country.mainWebsite].\n";
+        errorReport += "   Найденные переменные: " + uniqueWebsiteKeys.join(", ") + "\n\n";
     }
     if (ppiReport) {
-        report += "\n" + ppiReport;
+        errorReport += ppiReport + "\n";
     }
-} else {
-    report = "✓ Все ок\n\n" + report;
 }
 
-// Добавляем информацию о заменах для Беларуси
+// Лог: автозамены и то, что скрипт уже сделал. Ошибки — выше.
 if (ogrnStateNumberLongCount > 0 || ogrnStateNumberCount > 0 || stateNumberCount > 0) {
-    report += "✓ Произведена замена на [company.stateNumberLong]\n";
+    logReport += "✓ Произведена замена на [company.stateNumberLong]\n";
 }
 
-// В САМЫЙ КОНЕЦ: сайт, кавычки и пробелы после точек
 if (angleCompanyReplaceCount > 0) {
-    report += "\n✓ Плейсхолдеры <COMPANY_*> заменены на [company.name] / [company.stateNumber] / [company.legalAddress] (" + angleCompanyReplaceCount + ")\n";
+    logReport += "✓ Плейсхолдеры <COMPANY_*> заменены на [company.name] / [company.stateNumber] / [company.legalAddress] (" + angleCompanyReplaceCount + ")\n";
 }
 if (leftoverAnglePlaceholders.length > 0) {
-    report += "⚠ В тексте остались угловые плейсхолдеры — ферма их не подставит: " + leftoverAnglePlaceholders.join(", ") + "\n\n";
+    errorReport += "⚠ В тексте остались угловые плейсхолдеры — ферма их не подставит: " + leftoverAnglePlaceholders.join(", ") + "\n\n";
 }
 if (websiteReplaced) {
-    report += "\n✓ Сайт dodopizza.ru заменен на переменную [country.mainWebsite]\n";
+    logReport += "✓ Сайт dodopizza.ru заменен на переменную [country.mainWebsite]\n";
 }
 if (websiteSpacingFixed > 0) {
-    report += "✓ Исправлены пробелы в адресах сайтов:\n";
+    logReport += "✓ Исправлены пробелы в адресах сайтов:\n";
     for (var i = 0; i < websiteSpacingFixes.length; i++) {
-        report += "   " + websiteSpacingFixes[i] + "\n";
+        logReport += "   " + websiteSpacingFixes[i] + "\n";
     }
 }
 if (quotesFixed > 0) {
-    report += "✓ Исправлены " + quotesFixed + " пары кавычек\n";
+    logReport += "✓ Исправлены " + quotesFixed + " пары кавычек\n";
 }
 if (innerQuotesFixed > 0) {
-    report += "✓ Исправлены " + innerQuotesFixed + " внутренние пары кавычек\n";
+    logReport += "✓ Исправлены " + innerQuotesFixed + " внутренние пары кавычек\n";
 }
-// Универсальное сообщение про пробелы и ошибки после точек
 if (dotsFixed > 0) {
-    report += "✓ Исправлены пробелы и ошибки после точек:\n";
+    logReport += "✓ Исправлены пробелы и ошибки после точек:\n";
     for (var i = 0; i < dotFixDetails.length; i++) {
-        report += "   " + dotFixDetails[i].before + " → " + dotFixDetails[i].after;
+        logReport += "   " + dotFixDetails[i].before + " → " + dotFixDetails[i].after;
         if (dotFixDetails[i].count > 1) {
-            report += " (" + dotFixDetails[i].count + ")";
+            logReport += " (" + dotFixDetails[i].count + ")";
         }
-        report += "\n";
+        logReport += "\n";
     }
 }
 
-// Добавляем информацию о включении overprint stroke
 if (cutlineLayerFound && !cutlineLayerHasObjects) {
-    report += "⚠ В слое cutline нет объектов\n";
+    errorReport += "⚠ В слое cutline нет объектов\n";
 } else if (hasOverprintFixed) {
-    report += "✓ Включен Overprint stroke для объектов в слое cutline\n";
+    logReport += "✓ Включен Overprint stroke для объектов в слое cutline\n";
 }
 
+var legalBullets = [];
+if (hasLegalWithoutAutosize) {
+    legalBullets.push("не включен авто-сайз");
+}
 if (legalFramesWithWidthAutoSize.length > 0) {
-    report += "⚠ У лигала включён авто-сайз только по ширине. Лучше задать ширину вручную, а высоту автосайз — так текст заполнит нужное пространство по вертикали." + "\n\n";
+    legalBullets.push("авто-сайз только по ширине");
 }
-
+if (hasLegalWithoutParagraphSetup) {
+    legalBullets.push("без LegalParagraphSetup");
+} else {
+    if (legalFramesWithoutHyphenation.length > 0) {
+        legalBullets.push("не включены переносы");
+    }
+    if (legalFramesWithoutRussianLanguage.length > 0) {
+        legalBullets.push("язык не русский");
+    }
+}
 if (possibleLegalNoAutoSize.length > 0) {
-    report += "⚠ Кажется, я нашёл лигалы в макете, у которых не включён авто-сайз. Проверьте эти блоки:\n";
-    var uniquePossibleLegalNoAutoSize = {};
-    for (var i = 0; i < possibleLegalNoAutoSize.length; i++) {
-        uniquePossibleLegalNoAutoSize[possibleLegalNoAutoSize[i]] = true;
-    }
-    for (var text in uniquePossibleLegalNoAutoSize) {
-        report += "   • «" + text.replace(/\s+/g, ' ').substring(0, 70) + "...»\n";
-    }
-    report += "\n";
+    legalBullets.push("похоже ещё лигалы без авто-сайза");
 }
 if (possibleLegalWidthAutoSize.length > 0) {
-    report += "⚠ Кажется, я нашёл лигалы в макете, у которых авто-сайз только по ширине. Лучше задать ширину вручную, а высоту автосайз. Проверьте эти блоки:\n";
-    var uniquePossibleLegalWidthAutoSize = {};
-    for (var i = 0; i < possibleLegalWidthAutoSize.length; i++) {
-        uniquePossibleLegalWidthAutoSize[possibleLegalWidthAutoSize[i]] = true;
+    legalBullets.push("похоже ещё лигалы с авто-сайзом только по ширине");
+}
+if (legalBullets.length > 0) {
+    errorReport += "Лигал\n";
+    for (var lb = 0; lb < legalBullets.length; lb++) {
+        errorReport += "⚠ " + legalBullets[lb] + "\n";
     }
-    for (var text in uniquePossibleLegalWidthAutoSize) {
-        report += "   • «" + text.replace(/\s+/g, ' ').substring(0, 70) + "...»\n";
-    }
-    report += "\n";
+    errorReport += "\n";
 }
 
 var variablesWithoutBrackets = checkVariablesWithoutBrackets(doc);
 if (variablesWithoutBrackets.length > 0) {
-    report += "⚠ Найдены переменные без квадратных скобок: " + variablesWithoutBrackets.join(", ") + "\n\n";
+    errorReport += "⚠ Найдены переменные без квадратных скобок: " + variablesWithoutBrackets.join(", ") + "\n\n";
 }
 
 if (systemVariablesFixedCount > 0) {
-    report += "✓ Исправлены ошибки в системных переменных:\n" + fixedSystemVariablesReport;
+    logReport += "✓ Исправлены ошибки в системных переменных:\n" + fixedSystemVariablesReport;
 }
 
 if (pasteboardExpandInfo && pasteboardExpandInfo.error) {
-    report += "⚠ Не удалось расширить pasteboard для #link: " + pasteboardExpandInfo.error + "\n\n";
+    errorReport += "⚠ Не удалось расширить pasteboard для #link: " + pasteboardExpandInfo.error + "\n\n";
 } else if (pasteboardExpandInfo && pasteboardExpandInfo.changed) {
-    report += "✓ Есть #link — pasteboard расширен, чтобы ферма смогла подставить картинку (value set)\n";
-    report += "   " + round1(pasteboardExpandInfo.fromH) + "×" + round1(pasteboardExpandInfo.fromV) +
+    logReport += "✓ Есть #link — pasteboard расширен, чтобы ферма смогла подставить картинку (value set)\n";
+    logReport += "   " + round1(pasteboardExpandInfo.fromH) + "×" + round1(pasteboardExpandInfo.fromV) +
         " → " + round1(pasteboardExpandInfo.toH) + "×" + round1(pasteboardExpandInfo.toV) + " pt\n";
     var pbDetails = pasteboardExpandInfo.details || [];
     for (var pbi = 0; pbi < pbDetails.length; pbi++) {
@@ -2654,10 +2953,16 @@ if (pasteboardExpandInfo && pasteboardExpandInfo.error) {
         if (d.overBottom > 0.5) bits.push("низ " + round1(d.overBottom) + " pt");
         if (d.overLeft > 0.5) bits.push("лево " + round1(d.overLeft) + " pt");
         if (d.overRight > 0.5) bits.push("право " + round1(d.overRight) + " pt");
-        report += "   • " + d.name + ": вылет " + bits.join(", ") + "\n";
+        logReport += "   • " + d.name + ": вылет " + bits.join(", ") + "\n";
     }
-    report += "   Страница и бlid не менялись. Фрейм картинки подрезать не надо.\n";
+    logReport += "   Страница и блид не менялись. Фрейм картинки подрезать не надо.\n";
 }
 
-showReportDialog(report);
+if (isBlankReport(errorReport)) {
+    errorReport = "✓ Все ок\n";
+}
 
+showReportDialog(errorReport, logReport);
+
+
+})();
