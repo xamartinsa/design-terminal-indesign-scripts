@@ -467,6 +467,16 @@ function frameLooksLikeLegal(frameText) {
         /<COMPANY_(NAME|STATE_NUMBER|LEGAL_ADDRESS)>/i.test(t);
 }
 
+// Не любой длинный фрейм с [переменной], а текст, похожий на юр. блок без company.*.
+function frameLooksLikePossibleLegal(frameText) {
+    var t = String(frameText || "");
+    if (!t || frameLooksLikeLegal(t)) return false;
+    var low = t.toLowerCase();
+    if (/огрнип|огрн|erid|оферт|рекламодател|не является|юридическ|реклама\./.test(low)) return true;
+    if (/ооо\s*[«"']/.test(low)) return true;
+    return /(^|[^а-яё])инн([^а-яё]|$)/.test(low);
+}
+
 function addUniqueNames(target, names) {
     var seen = {};
     var i, n;
@@ -571,8 +581,7 @@ for (var i = 0; i < found.length; i++) {
                 if (textFrame.textFramePreferences.autoSizingType === AutoSizingTypeEnum.OFF) {
                     framesWithoutAutosize.push(variableName);
                 }
-                // Новая эвристика: если фрейм длинный, возможно это лигал
-                if (frameText.length > 40) {
+                if (frameLooksLikePossibleLegal(frameText)) {
                     if (textFrame.textFramePreferences.autoSizingType === AutoSizingTypeEnum.OFF) {
                         possibleLegalNoAutoSize.push(frameText);
                     }
