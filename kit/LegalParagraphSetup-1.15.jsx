@@ -1,4 +1,4 @@
-﻿// LegalParagraphSetup-1.14.jsx
+﻿// LegalParagraphSetup-1.15.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification
@@ -8,13 +8,14 @@
 // - No Break for Code39 barcode `*[terminal.renderCode]*` / `*P530.L4.T5.R12*`
 // - No Break for юр. ярлыки и адресные аббр. + пробел (ОГРН 1…, ул. Морская, д. 12)
 // - No Break for initials Е.Д. / С.Н. so the last period does not wrap alone
+// - No Break for ул. им. Фамилия Е.Д. (one toponym) and "Фамилия Е.Д."
 // - Auto/Hide GREP: extra period after initials (Е.Д. + template ".") — farm fill
 // - quote cleanup → Russian guillemets «»
 // - spaced hyphen/en-dash " - " / " – " → em dash (not 10–12)
 // - strip a single trailing period at end of frame (also after [...] variables)
 
 (function () {
-    var SCRIPT_VERSION = "1.14";
+    var SCRIPT_VERSION = "1.15";
     var NO_BREAK_CHAR_STYLE_NAME = "No Break";
     var HIDE_CHAR_STYLE_NAME = "Auto/Hide";
 
@@ -42,14 +43,21 @@
     // уже закрывает \<[\l\u]\.\s
     //
     // Initials (1.14): [\l\u].[\l\u].\s? keeps Е.Д. / Е.Д together so "Д." does not wrap alone.
+    // Toponym (1.15): ул. им Фелицына Е.Д. / УЛ. ИМ. ФЕЛИЦЫНА Е.Д. as one No Break
+    // (not the whole address). Also "Фамилия Е.Д." so initials do not sit alone.
     // Extra sentence period after those initials (Е.Д. + ".") → Auto/Hide GREP, not delete.
     // Hide extra period after initials. Two alts, both fixed-length lookbehind:
     // 1) Е.Д. + "." / " ."  2) Е.Д + " ." (no period after the second letter).
     var DOUBLE_PERIOD_HIDE_GREP = "(?<=[\\l\\u]\\.[\\l\\u]\\.)\\s*\\.|(?<=[\\l\\u]\\.[\\l\\u])\\s+\\.";
 
+    var STREET_TOPONYM_GREP = "(?i)ул\\.\\s*им\\.?\\s+\\S+\\s+[\\l\\u]\\.[\\l\\u]\\.?\\s?";
+    var SURNAME_INITIALS_GREP = "\\S+\\s+[\\l\\u]\\.[\\l\\u]\\.?\\s?";
+    var INITIALS_GREP = "[\\l\\u]\\.[\\l\\u]\\.?\\s?";
     var GREP_EXPRESSION =
         "\\*[A-Za-z0-9.]+\\*" +
-        "|[\\l\\u]\\.[\\l\\u]\\.\\s?" +
+        "|" + STREET_TOPONYM_GREP +
+        "|" + SURNAME_INITIALS_GREP +
+        "|" + INITIALS_GREP +
         "|[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+" +
         "|[A-Za-z]{2,}" +
         "|.\\.[\\l\\u]" +

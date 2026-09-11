@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-09-11T11:38:36Z",
+    "updatedAt":  "2026-09-11T13:36:34Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -11,9 +11,9 @@
                   },
                   {
                       "id":  "LegalParagraphSetup",
-                      "name":  "LegalParagraphSetup-1.14.jsx",
-                      "version":  "1.14",
-                      "sha256":  "4afea2826fa5c2fff20bacf1bded45fd37a31963978cd6c05d745714b5db9d19"
+                      "name":  "LegalParagraphSetup-1.15.jsx",
+                      "version":  "1.15",
+                      "sha256":  "0e1a201e764bc9b5f8606bb8adbea35ddab3cf116e53eee99afd5aa9dba8f7cd"
                   },
                   {
                       "id":  "ImageCroper",
