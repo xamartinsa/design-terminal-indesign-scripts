@@ -1,4 +1,4 @@
-﻿// LegalParagraphSetup-1.13.jsx
+﻿// LegalParagraphSetup-1.14.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification
@@ -7,13 +7,16 @@
 // - No Break for digit runs + following space ("1 пиццы", "1 клиента")
 // - No Break for Code39 barcode `*[terminal.renderCode]*` / `*P530.L4.T5.R12*`
 // - No Break for юр. ярлыки и адресные аббр. + пробел (ОГРН 1…, ул. Морская, д. 12)
+// - No Break for initials Е.Д. / С.Н. so the last period does not wrap alone
+// - Auto/Hide GREP: extra period after initials (Е.Д. + template ".") — farm fill
 // - quote cleanup → Russian guillemets «»
 // - spaced hyphen/en-dash " - " / " – " → em dash (not 10–12)
 // - strip a single trailing period at end of frame (also after [...] variables)
 
 (function () {
-    var SCRIPT_VERSION = "1.13";
+    var SCRIPT_VERSION = "1.14";
     var NO_BREAK_CHAR_STYLE_NAME = "No Break";
+    var HIDE_CHAR_STYLE_NAME = "Auto/Hide";
 
     // Base patterns (same idea as BasicParagraphSetup) + longer RU prepositions/conjunctions.
     // Word list kept as \<(?:...)\s so No Break covers "word + following space".
@@ -37,8 +40,16 @@
     // - д.256 без пробела после точки
     // Список только из живых адресов, не KLADR целиком. г. / д. / ш. на одну букву
     // уже закрывает \<[\l\u]\.\s
+    //
+    // Initials (1.14): [\l\u].[\l\u].\s? keeps Е.Д. / Е.Д together so "Д." does not wrap alone.
+    // Extra sentence period after those initials (Е.Д. + ".") → Auto/Hide GREP, not delete.
+    // Hide extra period after initials. Two alts, both fixed-length lookbehind:
+    // 1) Е.Д. + "." / " ."  2) Е.Д + " ." (no period after the second letter).
+    var DOUBLE_PERIOD_HIDE_GREP = "(?<=[\\l\\u]\\.[\\l\\u]\\.)\\s*\\.|(?<=[\\l\\u]\\.[\\l\\u])\\s+\\.";
+
     var GREP_EXPRESSION =
         "\\*[A-Za-z0-9.]+\\*" +
+        "|[\\l\\u]\\.[\\l\\u]\\.\\s?" +
         "|[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)+" +
         "|[A-Za-z]{2,}" +
         "|.\\.[\\l\\u]" +
@@ -118,6 +129,85 @@
         }
         charStyle.noBreak = true;
         return charStyle;
+    }
+
+    function getNoneSwatch() {
+        var names = ["[None]", "None"];
+        for (var n = 0; n < names.length; n++) {
+            try {
+                var swatch = doc.swatches.itemByName(names[n]);
+                if (swatch.isValid) {
+                    return swatch;
+                }
+            } catch (eSw) {}
+        }
+        return NothingEnum.NOTHING;
+    }
+
+    function ensureHideCharStyle() {
+        var charStyle = doc.characterStyles.itemByName(HIDE_CHAR_STYLE_NAME);
+        if (!charStyle.isValid) {
+            charStyle = doc.characterStyles.add({ name: HIDE_CHAR_STYLE_NAME });
+        }
+        charStyle.horizontalScale = 1;
+        charStyle.verticalScale = 1;
+        charStyle.fillColor = getNoneSwatch();
+        return charStyle;
+    }
+
+    function isDoublePeriodHideGrep(existing, charStyle) {
+        if (!existing) {
+            return false;
+        }
+        try {
+            if (existing.appliedCharacterStyle.id !== charStyle.id) {
+                return false;
+            }
+        } catch (eId) {
+            return false;
+        }
+        var expr = String(existing.grepExpression || "");
+        if (expr === DOUBLE_PERIOD_HIDE_GREP) {
+            return true;
+        }
+        // Older 1.14 drafts / hand-made: extra period after a single letter+dot.
+        if (expr.indexOf("(?<=[\\l\\u]\\.") !== -1 && expr.indexOf("\\s*\\.") !== -1) {
+            return true;
+        }
+        return false;
+    }
+
+    function ensureDoublePeriodHideGrep(paragraph, charStyle) {
+        if (!(paragraph.nestedGrepStyles && typeof paragraph.nestedGrepStyles.add === "function")) {
+            throw new Error("nestedGrepStyles unavailable on paragraph");
+        }
+
+        var i;
+        for (i = paragraph.nestedGrepStyles.length - 1; i >= 0; i--) {
+            try {
+                var existing = paragraph.nestedGrepStyles[i];
+                if (isDoublePeriodHideGrep(existing, charStyle) && existing.grepExpression !== DOUBLE_PERIOD_HIDE_GREP) {
+                    existing.remove();
+                }
+            } catch (eRem) {}
+        }
+
+        for (i = 0; i < paragraph.nestedGrepStyles.length; i++) {
+            try {
+                if (
+                    paragraph.nestedGrepStyles[i].grepExpression === DOUBLE_PERIOD_HIDE_GREP &&
+                    paragraph.nestedGrepStyles[i].appliedCharacterStyle.id === charStyle.id
+                ) {
+                    return false;
+                }
+            } catch (eEx) {}
+        }
+
+        paragraph.nestedGrepStyles.add({
+            appliedCharacterStyle: charStyle,
+            grepExpression: DOUBLE_PERIOD_HIDE_GREP
+        });
+        return true;
     }
 
     function ensureLocalGrepStyle(paragraph, charStyle) {
@@ -390,6 +480,7 @@
         }
 
         var charStyle = ensureNoBreakCharStyle();
+        var hideStyle = ensureHideCharStyle();
 
         for (var i = 0; i < targetParagraphs.length; i++) {
             var para = targetParagraphs[i];
@@ -409,6 +500,7 @@
             para.maximumGlyphScaling = 110;
 
             ensureLocalGrepStyle(para, charStyle);
+            ensureDoublePeriodHideGrep(para, hideStyle);
         }
 
         try {
