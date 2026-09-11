@@ -269,6 +269,7 @@ var legalFramesWithoutRussianLanguage = [];
 var legalFramesCheckedCount = 0;
 var checkedLegalTypographyFrames = {};
 var hasLegalWithoutParagraphSetup = false;
+var hasLegalWithoutAllCaps = false;
 var checkedLegalSetupFrames = {};
 
 function addUniqueLimited(list, seen, value, limit) {
@@ -441,6 +442,50 @@ function checkLegalParagraphSetup(textFrame) {
     }
 }
 
+function paragraphHasAllCaps(paragraph) {
+    try {
+        if (paragraph.capitalization === Capitalization.ALL_CAPS) {
+            return true;
+        }
+    } catch (eCap) {}
+    try {
+        var ranges = paragraph.textStyleRanges.everyItem().getElements();
+        var r;
+        var saw = false;
+        for (r = 0; r < ranges.length; r++) {
+            var t = String(ranges[r].contents || "").replace(/\s+/g, "");
+            if (!t.length) {
+                continue;
+            }
+            saw = true;
+            if (ranges[r].capitalization !== Capitalization.ALL_CAPS) {
+                return false;
+            }
+        }
+        return saw;
+    } catch (eRanges) {}
+    return false;
+}
+
+function checkLegalAllCaps(textFrame) {
+    if (hasLegalWithoutAllCaps) {
+        return;
+    }
+    try {
+        var paragraphs = textFrame.paragraphs.everyItem().getElements();
+        var p;
+        for (p = 0; p < paragraphs.length; p++) {
+            if (!frameLooksLikeLegal(paragraphs[p].contents)) {
+                continue;
+            }
+            if (!paragraphHasAllCaps(paragraphs[p])) {
+                hasLegalWithoutAllCaps = true;
+                return;
+            }
+        }
+    } catch (eAll) {}
+}
+
 function checkLegalTypography(textFrame) {
     var key = getTextFrameKey(textFrame);
     if (checkedLegalTypographyFrames[key]) {
@@ -568,6 +613,7 @@ for (var i = 0; i < found.length; i++) {
             if (!isHidden) {
                 checkLegalTypography(textFrame);
                 checkLegalParagraphSetup(textFrame);
+                checkLegalAllCaps(textFrame);
 
                 if (textFrame.textFramePreferences.autoSizingType === AutoSizingTypeEnum.OFF) {
                     hasLegalWithoutAutosize = true;
@@ -2717,6 +2763,7 @@ if (
     problematicFontsFound ||
     hasLegalWithoutAutosize ||
     hasLegalWithoutParagraphSetup ||
+    hasLegalWithoutAllCaps ||
     legalFramesWithWidthAutoSize.length > 0 ||
     legalFramesWithoutHyphenation.length > 0 ||
     legalFramesWithoutRussianLanguage.length > 0 ||
@@ -2924,6 +2971,9 @@ if (hasLegalWithoutParagraphSetup) {
     if (legalFramesWithoutRussianLanguage.length > 0) {
         legalBullets.push("язык не русский");
     }
+}
+if (hasLegalWithoutAllCaps) {
+    legalBullets.push("не включен All Caps");
 }
 if (possibleLegalNoAutoSize.length > 0) {
     legalBullets.push("похоже ещё лигалы без авто-сайза");
