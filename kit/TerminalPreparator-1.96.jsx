@@ -1046,14 +1046,15 @@ function formatFileSizeMb(mb) {
 function formatImagePpiWarning(ppi, required, mb, kind, sizeBad) {
     var parts = [];
     if (kind === "high") {
-        parts.push("⚠ Высокий PPI " + ppi + " (" + required + ")");
+        parts.push("Высокий PPI " + ppi + " (" + required + ")");
     } else if (kind === "low") {
-        parts.push("⚠ Низкий PPI " + ppi + " (" + required + ")");
+        parts.push("Низкий PPI " + ppi + " (" + required + ")");
     }
     if (sizeBad) {
-        parts.push("⚠ Большой вес " + formatFileSizeMb(mb));
+        parts.push((parts.length ? "большой вес " : "Большой вес ") + formatFileSizeMb(mb));
     }
-    return parts.join(", ");
+    if (!parts.length) return "";
+    return "⚠ " + parts.join(", ");
 }
 
 // Функция проверки изображений на странице
