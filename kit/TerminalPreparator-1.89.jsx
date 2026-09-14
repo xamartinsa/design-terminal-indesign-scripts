@@ -1657,19 +1657,14 @@ function formatNotInLinksReport(items, expectedLinksFolder, maxExamples) {
 }
 
 function isSilentPreparatorRun() {
+    // Only NEVER_INTERACT. Do not read scriptArgs.silent: it lives on the
+    // shared Application, so a leftover "1" from an agent batch would hide
+    // the Scripts-panel dialog on the next human click.
     try {
         if (app.scriptPreferences.userInteractionLevel === UserInteractionLevels.NEVER_INTERACT) {
             return true;
         }
     } catch (eUil) {}
-    try {
-        if (app.scriptArgs.isDefined("silent")) {
-            var silentVal = String(app.scriptArgs.getValue("silent")).toLowerCase();
-            if (silentVal === "1" || silentVal === "true" || silentVal === "yes") {
-                return true;
-            }
-        }
-    } catch (eArg) {}
     return false;
 }
 
