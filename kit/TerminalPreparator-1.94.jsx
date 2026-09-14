@@ -1049,6 +1049,8 @@ function formatImagePpiWarning(ppi, required, mb, kind, sizeBad) {
         parts.push("⚠ Высокий PPI " + ppi + " (" + required + ")");
     } else if (kind === "low") {
         parts.push("⚠ Низкий PPI " + ppi + " (" + required + ")");
+    } else {
+        parts.push("PPI " + ppi + " (" + required + ")");
     }
     if (sizeBad) {
         parts.push("⚠ Большой вес " + formatFileSizeMb(mb));
