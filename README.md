@@ -73,7 +73,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - TerminalPreparator  
 - LegalParagraphSetup  
 - ImageCroper  
-- ImageAndFontSyncer  
+- Syncer  
 - SaveAsInddAndIdml  
 - TerminalBelarusPreparator  
 - AutoFontSizeGrep  

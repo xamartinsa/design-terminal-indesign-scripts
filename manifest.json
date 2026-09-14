@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-09-11T13:48:25Z",
+    "updatedAt":  "2026-09-14T14:37:08Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -22,10 +22,10 @@
                       "sha256":  "d62b94c205e6ba5d415009350bb6709286e38c5475236394e487248d84a793fe"
                   },
                   {
-                      "id":  "ImageAndFontSyncer",
-                      "name":  "ImageAndFontSyncer-1.0.jsx",
+                      "id":  "Syncer",
+                      "name":  "Syncer-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "9968a163e5b9511b6f60db461dc1b00b8a968cab556204d37c2f0c6e607e2275"
+                      "sha256":  "277aaf418767be9e5589135bc482b86dac3d530350a49c521a84f63cf118b30f"
                   },
                   {
                       "id":  "SaveAsInddAndIdml",

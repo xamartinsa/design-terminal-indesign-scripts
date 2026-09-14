@@ -1,6 +1,6 @@
 ﻿#target "indesign"
 
-// ImageAndFontSyncer-1.0.jsx
+// Syncer-1.0.jsx
 // Синкер: картинки в Links + шрифты в Document fonts рядом с INDD.
 // Relink картинкам; шрифтам relink не нужен — InDesign берёт по имени.
 

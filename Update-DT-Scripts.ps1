@@ -90,7 +90,7 @@ try {
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
       Copy-Item -LiteralPath $dl -Destination $dest -Force
     }
-    foreach ($staleName in @('ImageLinkSyncer-*.jsx', 'FontSyncer-*.jsx', 'MiniPackage-*.jsx', 'TerminalSyncer-*.jsx')) {
+    foreach ($staleName in @('ImageAndFontSyncer-*.jsx', 'ImageLinkSyncer-*.jsx', 'FontSyncer-*.jsx', 'MiniPackage-*.jsx', 'TerminalSyncer-*.jsx')) {
       Get-ChildItem -LiteralPath $target -Filter $staleName -File -ErrorAction SilentlyContinue |
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
     }
