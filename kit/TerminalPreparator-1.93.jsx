@@ -1044,18 +1044,16 @@ function formatFileSizeMb(mb) {
 }
 
 function formatImagePpiWarning(ppi, required, mb, kind, sizeBad) {
-    var lines = [];
+    var parts = [];
     if (kind === "high") {
-        lines.push("⚠ Высокий PPI " + ppi + " (" + required + ")");
+        parts.push("⚠ Высокий PPI " + ppi + " (" + required + ")");
     } else if (kind === "low") {
-        lines.push("⚠ Низкий PPI " + ppi + " (" + required + ")");
-    } else {
-        lines.push("Нормальный PPI " + ppi + " (" + required + ")");
+        parts.push("⚠ Низкий PPI " + ppi + " (" + required + ")");
     }
     if (sizeBad) {
-        lines.push("⚠ Большой вес " + formatFileSizeMb(mb));
+        parts.push("⚠ Большой вес " + formatFileSizeMb(mb));
     }
-    return lines.join("\n");
+    return parts.join(", ");
 }
 
 // Функция проверки изображений на странице
