@@ -1089,9 +1089,9 @@ function checkImagesOnPage(page, pageName) {
                 if (ppiBad || sizeBad) {
                     ppiReport += link.name + "\n";
                     if (hasPpiValue) {
-                        ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize) + "\n";
+                        ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize) + "\n\n";
                     } else {
-                        ppiReport += "⚠ " + formatFileSizeMb(fileSize) + "\n";
+                        ppiReport += "⚠ " + formatFileSizeMb(fileSize) + "\n\n";
                     }
                 }
             }
@@ -2869,7 +2869,7 @@ if (
             uniqueVariables[framesWithoutAutosize[i]] = true;
         }
         for (var variable in uniqueVariables) {
-            errorReport += "⚠ У блока с переменной " + variable + " нет авто-сайза\n";
+            errorReport += "⚠ У блока с переменной " + variable + " нет авто-сайза\n\n";
         }
     }
 
@@ -2903,7 +2903,7 @@ if (
         errorReport += "   Найденные переменные: " + uniqueWebsiteKeys.join(", ") + "\n\n";
     }
     if (ppiReport) {
-        errorReport += ppiReport + "\n";
+        errorReport += ppiReport;
     }
 }
 
