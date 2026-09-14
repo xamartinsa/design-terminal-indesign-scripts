@@ -1049,6 +1049,8 @@ function formatImagePpiWarning(ppi, required, mb, kind, sizeBad) {
         lines.push("⚠ Высокий PPI " + ppi + " (" + required + ")");
     } else if (kind === "low") {
         lines.push("⚠ Низкий PPI " + ppi + " (" + required + ")");
+    } else {
+        lines.push("Нормальный PPI " + ppi + " (" + required + ")");
     }
     if (sizeBad) {
         lines.push("⚠ Большой вес " + formatFileSizeMb(mb));
@@ -1092,6 +1094,11 @@ function checkImagesOnPage(page, pageName) {
                         hasPPIWarning = true;
                         ppiBad = true;
                         ppiKind = "low";
+                    }
+                    if (!ppiKind) {
+                        if (firstPPI > upperLimit) ppiKind = "high";
+                        else if (firstPPI < lowerLimit) ppiKind = "low";
+                        else ppiKind = "ok";
                     }
                 }
 
