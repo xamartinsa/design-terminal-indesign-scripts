@@ -1043,8 +1043,17 @@ function formatFileSizeMb(mb) {
     return String(n).replace(".", ",") + " MB";
 }
 
-function formatImagePpiWarning(ppi, required, mb) {
-    return "⚠ PPI " + ppi + " (" + required + "), " + formatFileSizeMb(mb);
+function formatImagePpiWarning(ppi, required, mb, kind, sizeBad) {
+    var lines = [];
+    if (kind === "high") {
+        lines.push("⚠ Высокий PPI " + ppi + " (" + required + ")");
+    } else if (kind === "low") {
+        lines.push("⚠ Низкий PPI " + ppi + " (" + required + ")");
+    }
+    if (sizeBad) {
+        lines.push("⚠ Большой вес " + formatFileSizeMb(mb));
+    }
+    return lines.join("\n");
 }
 
 // Функция проверки изображений на странице
@@ -1063,6 +1072,7 @@ function checkImagesOnPage(page, pageName) {
                 var firstPPI = 0;
                 var hasPpiValue = false;
                 var ppiBad = false;
+                var ppiKind = "";
 
                 if (item.effectivePpi) {
                     firstPPI = Math.round(item.effectivePpi[0]);
@@ -1076,10 +1086,12 @@ function checkImagesOnPage(page, pageName) {
                         if (fileSize > 15) {
                             hasPPIWarning = true;
                             ppiBad = true;
+                            ppiKind = "high";
                         }
                     } else if (firstPPI < lowerLimit) {
                         hasPPIWarning = true;
                         ppiBad = true;
+                        ppiKind = "low";
                     }
                 }
 
@@ -1089,9 +1101,9 @@ function checkImagesOnPage(page, pageName) {
                 if (ppiBad || sizeBad) {
                     ppiReport += link.name + "\n";
                     if (hasPpiValue) {
-                        ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize) + "\n\n";
+                        ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize, ppiKind, sizeBad) + "\n\n";
                     } else {
-                        ppiReport += "⚠ " + formatFileSizeMb(fileSize) + "\n\n";
+                        ppiReport += "⚠ Большой вес " + formatFileSizeMb(fileSize) + "\n\n";
                     }
                 }
             }
