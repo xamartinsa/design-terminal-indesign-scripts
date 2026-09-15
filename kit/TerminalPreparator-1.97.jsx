@@ -1768,11 +1768,26 @@ function paginateReportPages(text, maxVisualLines, charsPerLine) {
     return pages;
 }
 
+function dialogOsIsMac() {
+    try {
+        if (typeof File !== "undefined" && File.fs === "Macintosh") return true;
+    } catch (eFs) {}
+    try {
+        return String($.os).indexOf("Mac") >= 0;
+    } catch (eOs) {}
+    return false;
+}
+
 function dialogBoxMetrics() {
     var lineH = 18;
     var padH = 28;
     var boxW = 320;
     var maxH = 360;
+    var okRowH = 32;
+    var winMarginV = 16;
+    var winSpacing = 8;
+    // Aqua tabs are taller; on Mac the strip can sit outside preferredSize.
+    var tabChromeH = dialogOsIsMac() ? 52 : 36;
     try {
         if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
             var scr = $.screens[0];
@@ -1782,16 +1797,43 @@ function dialogBoxMetrics() {
             if (scrH > 0) maxH = Math.min(360, Math.max(320, Math.floor(scrH * 0.34)));
         }
     } catch (eScr) {}
+    var winH = maxH + 80;
     return {
         lineH: lineH,
         padH: padH,
         boxW: boxW,
         maxH: maxH,
         winW: boxW + 32,
-        winH: maxH + 80,
+        winH: winH,
+        okRowH: okRowH,
+        contentH: winH - winMarginV - winSpacing - okRowH,
+        tabChromeH: tabChromeH,
         paneMargins: [8, 8, 8, 8],
         charsPerLine: Math.max(28, Math.floor(boxW / 7))
     };
+}
+
+function tabbedPanelHeight(metrics) {
+    var h = metrics.contentH;
+    if (dialogOsIsMac()) h -= metrics.tabChromeH;
+    return Math.max(120, h);
+}
+
+function reportPaneHeight(metrics, hasTabs) {
+    var panePad = 16;
+    if (!hasTabs) return Math.max(80, metrics.contentH - panePad);
+    return Math.max(80, tabbedPanelHeight(metrics) - metrics.tabChromeH - panePad);
+}
+
+function sizeTabbedPanel(tpanel, metrics) {
+    var w = metrics.boxW + 24;
+    var h = tabbedPanelHeight(metrics);
+    tpanel.alignment = ["fill", "top"];
+    tpanel.preferredSize = [w, h];
+    try {
+        tpanel.minimumSize = [w, h];
+        tpanel.maximumSize = [w, h];
+    } catch (eSize) {}
 }
 
 function applyFixedDialogSize(w, metrics) {
@@ -1800,6 +1842,9 @@ function applyFixedDialogSize(w, metrics) {
         w.minimumSize = [metrics.winW, metrics.winH];
         w.maximumSize = [metrics.winW, metrics.winH];
     } catch (eSize) {}
+    try {
+        w.layout.layout(true);
+    } catch (eLay) {}
 }
 
 function addDialogOkButton(parent, metrics) {
@@ -1807,26 +1852,32 @@ function addDialogOkButton(parent, metrics) {
     okRow.orientation = "row";
     okRow.alignment = ["fill", "bottom"];
     okRow.alignChildren = ["right", "center"];
+    okRow.preferredSize = [metrics.boxW, metrics.okRowH];
+    okRow.minimumSize = [metrics.boxW, metrics.okRowH];
+    try {
+        okRow.maximumSize = [10000, metrics.okRowH];
+    } catch (eMax) {}
     var okBtn = okRow.add("button", undefined, "OK", {name: "ok"});
     okBtn.preferredSize = [80, 24];
     okBtn.minimumSize = [80, 24];
     return okBtn;
 }
 
-function addPagedReportPane(parent, text, metrics) {
+function addPagedReportPane(parent, text, metrics, boxH) {
     var boxW = metrics.boxW;
-    var maxH = metrics.maxH;
+    if (boxH == null) boxH = metrics.maxH;
     var lineH = metrics.lineH;
     var padH = metrics.padH;
     var charsPerLine = metrics.charsPerLine;
-    var maxLines = Math.max(4, Math.floor((maxH - padH) / lineH));
+    var maxLines = Math.max(4, Math.floor((boxH - padH) / lineH));
     var pages = paginateReportPages(text, maxLines, charsPerLine);
     var pageIdx = 0;
-    var boxH = maxH;
+    var textH = boxH;
+    if (pages.length > 1) textH = Math.max(80, boxH - 28);
 
     var et = parent.add("statictext", undefined, pages[0], {multiline: true});
-    et.preferredSize = [boxW, boxH];
-    et.minimumSize = [boxW, boxH];
+    et.preferredSize = [boxW, textH];
+    et.minimumSize = [boxW, textH];
     et.alignment = ["fill", "top"];
 
     if (pages.length > 1) {
@@ -1874,27 +1925,28 @@ function addReportTabs(parent, errorsText, logText, metrics) {
         pane.alignChildren = ["fill", "top"];
         pane.alignment = ["fill", "top"];
         pane.margins = paneMargins;
-        addPagedReportPane(pane, errorsText, metrics);
+        addPagedReportPane(pane, errorsText, metrics, reportPaneHeight(metrics, false));
         return pane;
     }
 
     var tpanel = parent.add("tabbedpanel");
     tpanel.alignChildren = ["fill", "fill"];
-    tpanel.preferredSize = [metrics.boxW + 24, metrics.maxH + 56];
+    sizeTabbedPanel(tpanel, metrics);
 
+    var paneH = reportPaneHeight(metrics, true);
     var tabErr = tpanel.add("tab", undefined, "Важное");
     tabErr.orientation = "column";
     tabErr.alignChildren = ["fill", "top"];
     tabErr.margins = paneMargins;
     tabErr.spacing = 6;
-    addPagedReportPane(tabErr, errorsText, metrics);
+    addPagedReportPane(tabErr, errorsText, metrics, paneH);
 
     var tabLog = tpanel.add("tab", undefined, "Неважное");
     tabLog.orientation = "column";
     tabLog.alignChildren = ["fill", "top"];
     tabLog.margins = paneMargins;
     tabLog.spacing = 6;
-    addPagedReportPane(tabLog, logShow, metrics);
+    addPagedReportPane(tabLog, logShow, metrics, paneH);
 
     tpanel.selection = tabErr;
     return tpanel;
@@ -1904,7 +1956,7 @@ function showTabbedReportDialog(errorsText, logText) {
     var metrics = dialogBoxMetrics();
     var w = new Window("dialog", "Terminal Preparator");
     w.orientation = "column";
-    w.alignChildren = ["fill", "fill"];
+    w.alignChildren = ["fill", "top"];
     w.margins = 8;
     w.spacing = 8;
 
@@ -2101,24 +2153,25 @@ function showAllOkDanceDialog(reportText, logText) {
 
     var metrics = dialogBoxMetrics();
     var boxW = metrics.boxW;
-    var dancerH = metrics.maxH - 48;
+    var logStr = String(logText || "").replace(/\s+$/, "");
+    var hasTabs = !isBlankReport(logStr);
+    var dancerH = Math.max(96, reportPaneHeight(metrics, hasTabs) - 28);
 
     var fwCols = Math.max(46, Math.floor(boxW / 5));
-    var fwRows = Math.max(28, Math.floor(dancerH / 12));
+    var fwRows = Math.max(18, Math.floor(dancerH / 12));
     var sim = createFireworksSim(fwCols, fwRows);
-    var logStr = String(logText || "").replace(/\s+$/, "");
 
     var w = new Window("palette", "Terminal Preparator");
     w.orientation = "column";
-    w.alignChildren = ["fill", "fill"];
+    w.alignChildren = ["fill", "top"];
     w.margins = 8;
     w.spacing = 8;
 
     var okParent = w;
-    if (logStr) {
+    if (hasTabs) {
         var tpanel = w.add("tabbedpanel");
         tpanel.alignChildren = ["fill", "fill"];
-        tpanel.preferredSize = [metrics.boxW + 24, metrics.maxH + 56];
+        sizeTabbedPanel(tpanel, metrics);
         var tabOk = tpanel.add("tab", undefined, "Важное");
         tabOk.orientation = "column";
         tabOk.alignChildren = ["fill", "top"];
@@ -2129,14 +2182,14 @@ function showAllOkDanceDialog(reportText, logText) {
         tabLog.alignChildren = ["fill", "top"];
         tabLog.margins = metrics.paneMargins;
         tabLog.spacing = 6;
-        addPagedReportPane(tabLog, logStr, metrics);
+        addPagedReportPane(tabLog, logStr, metrics, reportPaneHeight(metrics, true));
         tpanel.selection = tabOk;
         okParent = tabOk;
     } else {
         var pane = w.add("group");
         pane.orientation = "column";
         pane.alignChildren = ["fill", "top"];
-        pane.alignment = ["fill", "fill"];
+        pane.alignment = ["fill", "top"];
         pane.margins = metrics.paneMargins;
         okParent = pane;
     }

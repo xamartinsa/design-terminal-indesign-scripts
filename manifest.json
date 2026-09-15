@@ -1,13 +1,13 @@
 {
-    "updatedAt":  "2026-09-14T16:49:10Z",
+    "updatedAt":  "2026-09-15T09:50:50Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
-                      "name":  "TerminalPreparator-1.96.jsx",
-                      "version":  "1.96",
-                      "sha256":  "590d189014d140d321cb268a0ff0a2ab759300391cf87a3ac5c1850d34d523dd"
+                      "name":  "TerminalPreparator-1.97.jsx",
+                      "version":  "1.97",
+                      "sha256":  "fa43acbb8bba640e4789b7242691d68df42d9cb6a7b6c489a1200c95ac56e38b"
                   },
                   {
                       "id":  "LegalParagraphSetup",
