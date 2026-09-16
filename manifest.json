@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-09-16T09:41:58Z",
+    "updatedAt":  "2026-09-16T10:20:54Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "files":  [
@@ -23,9 +23,9 @@
                   },
                   {
                       "id":  "Syncer",
-                      "name":  "Syncer-1.0.jsx",
-                      "version":  "1.0",
-                      "sha256":  "277aaf418767be9e5589135bc482b86dac3d530350a49c521a84f63cf118b30f"
+                      "name":  "Syncer-1.1.jsx",
+                      "version":  "1.1",
+                      "sha256":  "8aae39491fec4a1d667bc23d0e4eb80881f76b55168bf4cb328095ef5edbff08"
                   },
                   {
                       "id":  "SaveAsInddAndIdml",

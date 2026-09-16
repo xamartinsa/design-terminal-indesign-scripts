@@ -1,8 +1,10 @@
 ﻿#target "indesign"
 
-// Syncer-1.0.jsx
+// Syncer-1.1.jsx
 // Синкер: картинки в Links + шрифты в Document fonts рядом с INDD.
 // Relink картинкам; шрифтам relink не нужен — InDesign берёт по имени.
+// 1.1: встроенный QR не ошибка; шрифты из Windows Fonts копирует запасным путём;
+// один variable-файл не пытается копировать по разу на каждое начертание.
 
 (function () {
     if (app.documents.length === 0) {
@@ -31,6 +33,15 @@
 
     function fileNameOf(fileObj) {
         return decodeURI(fileObj.name);
+    }
+
+    function fileSizeOf(fileObj) {
+        try {
+            if (fileObj && fileObj.exists) {
+                return fileObj.length;
+            }
+        } catch (eLen) {}
+        return 0;
     }
 
     function shouldSkipCleanup(name) {
@@ -68,10 +79,136 @@
         } catch (eSave) {}
     }
 
+    function isEmbeddedLink(link) {
+        try {
+            if (link.status === LinkStatus.LINK_EMBEDDED) {
+                return true;
+            }
+        } catch (eSt) {}
+        return false;
+    }
+
+    function errorLooksEmbedded(err) {
+        var msg = String(err).toLowerCase();
+        return msg.indexOf("embed") >= 0;
+    }
+
+    function tryNativeCopy(src, destPath) {
+        var dest = new File(destPath);
+        try {
+            if (src.copy(destPath) && fileSizeOf(dest) > 0) {
+                return true;
+            }
+        } catch (eCopy) {}
+        return false;
+    }
+
+    function tryBinaryCopy(src, destPath) {
+        var dest = new File(destPath);
+        try {
+            src.encoding = "BINARY";
+            if (!src.open("r")) {
+                return false;
+            }
+            var data = src.read();
+            src.close();
+            if (!data || data.length === 0) {
+                return false;
+            }
+            dest.encoding = "BINARY";
+            if (!dest.open("w")) {
+                return false;
+            }
+            dest.write(data);
+            dest.close();
+            return fileSizeOf(dest) > 0;
+        } catch (eBin) {
+            try { src.close(); } catch (eC1) {}
+            try { dest.close(); } catch (eC2) {}
+            return false;
+        }
+    }
+
+    function tryCmdCopy(src, destPath) {
+        try {
+            var dest = new File(destPath);
+            var sh = new ActiveXObject("WScript.Shell");
+            var cmd = "cmd.exe /c copy /Y \"" + src.fsName + "\" \"" + dest.fsName + "\"";
+            sh.Run(cmd, 0, true);
+            return fileSizeOf(dest) > 0;
+        } catch (eCmd) {
+            return false;
+        }
+    }
+
+    function copyOneFile(src, destPath) {
+        var dest = new File(destPath);
+        try {
+            if (dest.exists && fileSizeOf(dest) === 0) {
+                dest.remove();
+            }
+        } catch (eZero) {}
+        if (tryNativeCopy(src, destPath)) {
+            return true;
+        }
+        if (tryBinaryCopy(src, destPath)) {
+            return true;
+        }
+        if (tryCmdCopy(src, destPath)) {
+            return true;
+        }
+        return false;
+    }
+
+    function fontFileCandidates(src) {
+        var list = [src];
+        var seen = {};
+        seen[normalizePath(src.fsName)] = true;
+        var name = fileNameOf(src);
+        var extraPaths = [];
+        try {
+            extraPaths.push($.getenv("LOCALAPPDATA") + "/Microsoft/Windows/Fonts/" + name);
+        } catch (eUser) {}
+        try {
+            extraPaths.push($.getenv("WINDIR") + "/Fonts/" + name);
+        } catch (eWin) {}
+        var i;
+        for (i = 0; i < extraPaths.length; i++) {
+            if (!extraPaths[i]) {
+                continue;
+            }
+            var extra = new File(extraPaths[i]);
+            try {
+                if (!extra.exists) {
+                    continue;
+                }
+                var key = normalizePath(extra.fsName);
+                if (seen[key]) {
+                    continue;
+                }
+                seen[key] = true;
+                list.push(extra);
+            } catch (eEx) {}
+        }
+        return list;
+    }
+
+    function copyFileRobust(src, destPath) {
+        var candidates = fontFileCandidates(src);
+        var i;
+        for (i = 0; i < candidates.length; i++) {
+            if (copyOneFile(candidates[i], destPath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     var linkCopied = 0;
     var linkRemoved = 0;
     var linkErrors = [];
     var linkMissing = [];
+    var linkEmbedded = 0;
 
     function syncLinks() {
         var linksFolder = new Folder(docFolder.fsName + "/Links");
@@ -88,6 +225,11 @@
             var link = allLinks[i];
             var linkName = decodeURI(link.name);
             usedFiles[linkName.toLowerCase()] = linkName;
+
+            if (isEmbeddedLink(link)) {
+                linkEmbedded++;
+                continue;
+            }
 
             try {
                 if (link.status === LinkStatus.LINK_MISSING || link.status === LinkStatus.LINK_INACCESSIBLE) {
@@ -124,6 +266,10 @@
                     linkErrors.push(linkName + " — не скопировался");
                 }
             } catch (eCopy) {
+                if (errorLooksEmbedded(eCopy)) {
+                    linkEmbedded++;
+                    continue;
+                }
                 linkErrors.push(linkName + " — " + eCopy);
             }
         }
@@ -239,6 +385,7 @@
         }
 
         var usedFiles = {};
+        var seenFontFiles = {};
         var i;
 
         for (i = 0; i < doc.fonts.length; i++) {
@@ -271,30 +418,34 @@
             }
 
             var baseName = fileNameOf(src);
-            usedFiles[baseName.toLowerCase()] = baseName;
+            var fileKey = baseName.toLowerCase();
+            usedFiles[fileKey] = baseName;
+
+            if (seenFontFiles[fileKey]) {
+                continue;
+            }
+            seenFontFiles[fileKey] = true;
 
             if (isInsideFolder(srcPath, fontsFolder.fsName)) {
                 continue;
             }
 
             var destFile = new File(fontsFolder.fsName + "/" + baseName);
+            if (fileSizeOf(destFile) > 0) {
+                continue;
+            }
+
             try {
-                if (destFile.exists) {
-                    if (normalizePath(destFile.fsName) === normalizePath(srcPath)) {
-                        continue;
-                    }
-                    destFile.remove();
-                }
-                var copied = src.copy(destFile.fsName);
-                if (!copied || !destFile.exists) {
-                    fontSkipped.push(label + " — не скопировался (" + baseName + ")");
+                var copied = copyFileRobust(src, destFile.fsName);
+                if (!copied || fileSizeOf(destFile) === 0) {
+                    fontSkipped.push(baseName + " — Windows не отдал файл из Fonts");
                     fontCanDelete = false;
                     continue;
                 }
                 fontCopied++;
                 fontCopiedNames.push(baseName);
             } catch (eCopy) {
-                fontSkipped.push(label + " — " + eCopy);
+                fontSkipped.push(baseName + " — " + eCopy);
                 fontCanDelete = false;
             }
         }
@@ -389,8 +540,13 @@
     if (linkRemoved > 0) {
         lines.push("  удалено лишних: " + linkRemoved);
     }
+    if (linkEmbedded > 0) {
+        lines.push("  встроенных не трогал: " + linkEmbedded + " (QR так и надо)");
+    }
     if (linkCopied === 0 && linkRemoved === 0 && linkErrors.length === 0 && linkMissing.length === 0) {
-        lines.push("  уже в порядке");
+        if (linkEmbedded === 0) {
+            lines.push("  уже в порядке");
+        }
     }
     if (linkMissing.length > 0) {
         lines.push("  слетели: " + linkMissing.join(", "));
@@ -436,7 +592,7 @@
         }
     }
     if (!fontCanDelete && fontRemoved === 0 && fontMissing.length + fontSkipped.length > 0) {
-        lines.push("  удаление не делал: сначала доложи недостающие файлы.");
+        lines.push("  папку не чистил, пока эти файлы не лягут в Document fonts.");
     }
     if (stillLocked.length > 0) {
         lines.push("  не удалилось (файл занят): " + stillLocked.length);
