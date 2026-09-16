@@ -2714,7 +2714,8 @@ if (qrKeys.length > 0) {
     }
 }
 
-// Чёрные не трогаем и не конвертируем — только предупреждение, если в макете смешаны разные «чёрные»
+// Чёрные не конвертируем. Ругаемся только если у текста rich / RGB / Registration.
+// K100 на тексте — норма. Rich black на плашках рядом с K100-текстом — тоже не ошибка.
 function classifyBlackishColor(color) {
     if (!color) return null;
     try {
@@ -2764,38 +2765,28 @@ var mixedBlackReport = "";
 try {
     var blackScanLimit = 400;
     var scanned = 0;
-    for (var pg = 0; pg < doc.pages.length && scanned < blackScanLimit; pg++) {
-        var items = doc.pages[pg].allPageItems;
-        for (var ii = 0; ii < items.length && scanned < blackScanLimit; ii++) {
-            if (isFigmaReferenceOverlayItem(items[ii])) continue;
-            noteBlackFromItem(items[ii], mixedBlackKinds);
-            scanned++;
-        }
-    }
     for (var st = 0; st < doc.stories.length && scanned < blackScanLimit; st++) {
         var story = doc.stories[st];
         try {
+            if (story.textContainers.length > 0 && isFigmaReferenceOverlayItem(story.textContainers[0])) {
+                continue;
+            }
             var ranges = story.textStyleRanges;
             var rmax = Math.min(ranges.length, 80);
             for (var ri = 0; ri < rmax && scanned < blackScanLimit; ri++) {
-                try {
-                    var kT = classifyBlackishColor(ranges[ri].fillColor);
-                    if (kT) mixedBlackKinds[kT] = true;
-                } catch (eR) {}
+                noteBlackFromItem(ranges[ri], mixedBlackKinds);
                 scanned++;
             }
         } catch (eStory) {}
     }
 } catch (eBlack) {}
 var mixedBlackLabels = [];
-if (mixedBlackKinds.k100) mixedBlackLabels.push("K100 / [Black]");
 if (mixedBlackKinds.rich) mixedBlackLabels.push("rich black (CMYK с цветными)");
 if (mixedBlackKinds.rgb) mixedBlackLabels.push("RGB 0-0-0");
-if (mixedBlackKinds.gray) mixedBlackLabels.push("Gray");
 if (mixedBlackKinds.registration) mixedBlackLabels.push("Registration");
-if (mixedBlackLabels.length >= 2) {
+if (mixedBlackLabels.length > 0) {
     mixedBlackFound = true;
-    mixedBlackReport = "⚠ В макете смешаны разные чёрные: " + mixedBlackLabels.join(", ") + ". На печати они могут разъехаться. Preparator цвет не меняет — выровняйте вручную.\n\n";
+    mixedBlackReport = "⚠ У текста смешанный чёрный: " + mixedBlackLabels.join(", ") + "\n\n";
 }
 
 // Линки и [terminal.renderCode] скрипт не удаляет — только отчёт. Старый 1.35 вырезал renderCode, 1.36+ нет.
