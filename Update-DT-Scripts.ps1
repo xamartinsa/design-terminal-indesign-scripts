@@ -10,7 +10,7 @@ $logFile = Join-Path $logDir 'update-last.log'
 $notes = New-Object System.Collections.Generic.List[string]
 $status = 'fail'
 $installTargets = @()
-$techFolder = 'Technical'
+$techFolder = 'zzz Technical'
 
 function Write-DtLog {
   try {
@@ -130,8 +130,8 @@ try {
     Add-Note "Target: $target"
 
     $keep = @{}
-    Add-Keep $keep '' 'tool-dir.txt'
     Add-Keep $keep '' $techFolder
+    Add-Keep $keep $techFolder '_update-last.log'
 
     foreach ($f in $m.files) {
       $folder = Get-PanelFolder $f
@@ -144,10 +144,10 @@ try {
 
     $pub = @($m.files | Where-Object { $_.id -eq 'PublishTemplate' }) | Select-Object -First 1
     if ($pub -and $publisherToolDir) {
-      $pubFolder = Get-PanelFolder $pub
-      $pubDir = if ($pubFolder) { Join-Path $target $pubFolder } else { $target }
-      [System.IO.File]::WriteAllText((Join-Path $pubDir 'tool-dir.txt'), $publisherToolDir)
-      Add-Keep $keep $pubFolder 'tool-dir.txt'
+      $techDir = Join-Path $target $techFolder
+      New-Item -ItemType Directory -Path $techDir -Force | Out-Null
+      [System.IO.File]::WriteAllText((Join-Path $techDir 'tool-dir.txt'), $publisherToolDir)
+      Add-Keep $keep $techFolder 'tool-dir.txt'
     }
 
     foreach ($folder in @($keep.Keys)) {
@@ -187,7 +187,7 @@ finally {
       $tech = Join-Path $t $techFolder
       New-Item -ItemType Directory -Path $tech -Force | Out-Null
       Get-ChildItem -LiteralPath $tech -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -ne '_update-last.log' } |
+        Where-Object { $_.Name -ne '_update-last.log' -and $_.Name -ne 'tool-dir.txt' } |
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
       Copy-Item -LiteralPath $logFile -Destination (Join-Path $tech '_update-last.log') -Force
     } catch {}

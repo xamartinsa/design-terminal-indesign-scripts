@@ -80,9 +80,9 @@ bash ~/Downloads/Update-DT-Scripts.command
 - AutoFontSizeGrep  
 - PublishTemplate (Windows; нужны Python + один раз `login.bat`)
 
-Папка **Advanced**: TerminalBelarusPreparator  
+Папка **zzz Advanced**: TerminalBelarusPreparator  
 
-Папка **Technical**: лог апдейтера, не скрипт.
+Папка **zzz Technical**: лог апдейтера, не скрипт.
 
 ## Если апдейтер уже открылся, но упал с ошибкой
 
@@ -92,7 +92,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 |---------|----------------|
 | Mac | `~/Library/Logs/DesignTerminal/update-last.log` |
 | Windows | `%LOCALAPPDATA%\DesignTerminal\update-last.log` |
-| Оба | `Design Terminal Git/Technical/_update-last.log` |
+| Оба | `Design Terminal Git/zzz Technical/_update-last.log` |
 
 На Mac в Finder: Cmd+Shift+G → вставь путь → Enter.
 
@@ -112,7 +112,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 xattr -cr ~/Downloads/Update-DT-Scripts.command && chmod +x ~/Downloads/Update-DT-Scripts.command && open ~/Downloads/Update-DT-Scripts.command
 ```
 
-Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/Technical/_update-last.log`
+Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/zzz Technical/_update-last.log`
 
 ---
 

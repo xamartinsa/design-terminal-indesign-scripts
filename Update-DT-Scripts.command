@@ -25,7 +25,7 @@ LOG_DIR="$HOME/Library/Logs/DesignTerminal"
 LOG_FILE="$LOG_DIR/update-last.log"
 STATUS="fail"
 NOTES=()
-TECH_FOLDER="Technical"
+TECH_FOLDER="zzz Technical"
 INSTALL_TARGETS=()
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true
@@ -54,7 +54,7 @@ cleanup() {
   local t
   for t in "${INSTALL_TARGETS[@]:-}"; do
     mkdir -p "$t/$TECH_FOLDER" 2>/dev/null || true
-    find "$t/$TECH_FOLDER" -mindepth 1 -maxdepth 1 ! -name '_update-last.log' -exec rm -rf {} + 2>/dev/null || true
+    find "$t/$TECH_FOLDER" -mindepth 1 -maxdepth 1 ! -name '_update-last.log' ! -name 'tool-dir.txt' -exec rm -rf {} + 2>/dev/null || true
     cp -f "$LOG_FILE" "$t/$TECH_FOLDER/_update-last.log" 2>/dev/null || true
   done
   rm -rf "$TMP"
@@ -113,7 +113,7 @@ const lines = [];
 lines.push([
   m.updatedAt || "",
   m.panelSubdir || "Design Terminal Git",
-  m.technicalFolder || "Technical"
+  m.technicalFolder || "zzz Technical"
 ].join("\t"));
 for (const f of (m.files || [])) {
   lines.push([
@@ -132,7 +132,7 @@ UPDATED_AT="$(printf '%s' "$HEADER" | cut -f1)"
 SUBDIR="$(printf '%s' "$HEADER" | cut -f2)"
 TECH_FOLDER="$(printf '%s' "$HEADER" | cut -f3)"
 [[ -n "$SUBDIR" ]] || SUBDIR="Design Terminal Git"
-[[ -n "$TECH_FOLDER" ]] || TECH_FOLDER="Technical"
+[[ -n "$TECH_FOLDER" ]] || TECH_FOLDER="zzz Technical"
 log_line "kitUpdatedAt=$UPDATED_AT"
 log_line "panelSubdir=$SUBDIR"
 log_line "technicalFolder=$TECH_FOLDER"
@@ -200,8 +200,8 @@ for panel in "${TARGETS[@]}"; do
   log_line "Target: $target"
   KEEP="$TMP/keep-$(echo "$target" | shasum -a 256 | awk '{ print $1 }').tsv"
   : > "$KEEP"
-  printf '%s\t%s\n' "" "tool-dir.txt" >> "$KEEP"
   printf '%s\t%s\n' "" "$TECH_FOLDER" >> "$KEEP"
+  printf '%s\t%s\n' "$TECH_FOLDER" "_update-last.log" >> "$KEEP"
 
   while IFS=$'\t' read -r id name sha folder winonly; do
     [[ -n "${name:-}" ]] || continue

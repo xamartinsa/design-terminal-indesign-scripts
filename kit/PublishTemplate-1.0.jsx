@@ -11,18 +11,30 @@
             .replace(/"/g, '\\"');
     }
 
+    function readToolDir(cfg) {
+        if (!cfg.exists) return null;
+        cfg.open("r");
+        var line = cfg.readln();
+        cfg.close();
+        line = String(line).replace(/^\s+|\s+$/g, "");
+        var dir = new Folder(line);
+        if (dir.exists) return dir;
+        return null;
+    }
+
     function findToolDir() {
         var here = File($.fileName).parent;
         var py = new File(here.fsName + "/publish.py");
         if (py.exists) return here;
-        var cfg = new File(here.fsName + "/tool-dir.txt");
-        if (cfg.exists) {
-            cfg.open("r");
-            var line = cfg.readln();
-            cfg.close();
-            line = String(line).replace(/^\s+|\s+$/g, "");
-            var dir = new Folder(line);
-            if (dir.exists) return dir;
+        var names = [
+            "/zzz Technical/tool-dir.txt",
+            "/Technical/tool-dir.txt",
+            "/tool-dir.txt"
+        ];
+        var i;
+        for (i = 0; i < names.length; i++) {
+            var dir = readToolDir(new File(here.fsName + names[i]));
+            if (dir) return dir;
         }
         return null;
     }

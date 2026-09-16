@@ -1,8 +1,8 @@
 {
-    "updatedAt":  "2026-09-16T10:50:34Z",
+    "updatedAt":  "2026-09-16T10:56:50Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
-    "technicalFolder":  "Technical",
+    "technicalFolder":  "zzz Technical",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
@@ -44,7 +44,7 @@
                       "id":  "PublishTemplate",
                       "name":  "PublishTemplate-1.0.jsx",
                       "version":  "1.0",
-                      "sha256":  "ba44d9e180e910bcb7e799ca1da31753c1ec5a7d0f568f7c64da718c7770a0e3",
+                      "sha256":  "216f3efb78e573ab8ca01f318b4dbb75d0ad46867dcd7e9f3ad2b47ebbf8a836",
                       "windowsOnly":  true
                   },
                   {
@@ -52,7 +52,7 @@
                       "name":  "TerminalBelarusPreparator.jsx",
                       "version":  "1.0",
                       "sha256":  "7e9141f799d226424a8f08c03f6326e1a5bd27c764f94c538aeaa19b2c87775f",
-                      "panelFolder":  "Advanced"
+                      "panelFolder":  "zzz Advanced"
                   }
               ]
 }
