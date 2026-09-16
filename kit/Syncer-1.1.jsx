@@ -208,7 +208,6 @@
     var linkRemoved = 0;
     var linkErrors = [];
     var linkMissing = [];
-    var linkEmbedded = 0;
 
     function syncLinks() {
         var linksFolder = new Folder(docFolder.fsName + "/Links");
@@ -227,7 +226,6 @@
             usedFiles[linkName.toLowerCase()] = linkName;
 
             if (isEmbeddedLink(link)) {
-                linkEmbedded++;
                 continue;
             }
 
@@ -267,7 +265,6 @@
                 }
             } catch (eCopy) {
                 if (errorLooksEmbedded(eCopy)) {
-                    linkEmbedded++;
                     continue;
                 }
                 linkErrors.push(linkName + " — " + eCopy);
@@ -540,13 +537,8 @@
     if (linkRemoved > 0) {
         lines.push("  удалено лишних: " + linkRemoved);
     }
-    if (linkEmbedded > 0) {
-        lines.push("  встроенных не трогал: " + linkEmbedded + " (QR так и надо)");
-    }
     if (linkCopied === 0 && linkRemoved === 0 && linkErrors.length === 0 && linkMissing.length === 0) {
-        if (linkEmbedded === 0) {
-            lines.push("  уже в порядке");
-        }
+        lines.push("  уже в порядке");
     }
     if (linkMissing.length > 0) {
         lines.push("  слетели: " + linkMissing.join(", "));
