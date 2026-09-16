@@ -108,3 +108,12 @@ xattr -cr ~/Downloads/Update-DT-Scripts.command && chmod +x ~/Downloads/Update-D
 ```
 
 Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/_update-last.log`
+
+---
+
+## Tampermonkey (админка Терминала)
+
+Скрипты ставятся один раз, дальше Tampermonkey обновляет их сам:
+
+**[Каталог и Install](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/blob/main/tampermonkey/README.md)**
+

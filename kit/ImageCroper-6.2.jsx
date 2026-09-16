@@ -1,8 +1,15 @@
 ﻿#target "indesign"
 
-// ImageCroper 6.1
+// ImageCroper 6.2
 // Кроп выбранного image-фрейма через Photoshop (исходные пиксели).
 // Цветовое пространство и ICC не трогаем: как было в файле, так и остаётся.
+//
+// 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
+// Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
+// в working RGB, а Save As PNG ещё и в sRGB. JPEG всегда встраивал ICC,
+// даже если исходник был без профиля.
+// 6.2: политики Preserve через Action Manager; PNG без convertToSRGB;
+// ICC вшиваем только если он уже был в исходнике.
 //
 // Почему не InDesign exportFile (v2–v5): PNG с прозрачностью даёт полоски
 // в альфе, от них не избавиться. JPEG-экспорт поворот «запекает», но PNG — нет.
@@ -13,7 +20,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.1";
+    var SCRIPT_VERSION = "6.2";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -73,6 +80,7 @@
 
     var saveKind = saveKindFromExt(ext);
     var newExt = saveKind.ext;
+    var embedProfile = detectEmbedFlag(origFile, ext);
 
     var oldH = doc.viewPreferences.horizontalMeasurementUnits;
     var oldV = doc.viewPreferences.verticalMeasurementUnits;
@@ -125,7 +133,8 @@
             targetW: targetW,
             targetH: targetH,
             dpi: finalDpi,
-            saveKind: saveKind.code
+            saveKind: saveKind.code,
+            embedProfile: embedProfile
         });
 
         if (psResult !== "OK") {
@@ -209,6 +218,183 @@
 
     function almostZero(v, eps) {
         return Math.abs(Number(v) || 0) <= eps;
+    }
+
+    function bAt(s, i) {
+        return s.charCodeAt(i) & 0xFF;
+    }
+
+    function u16be(s, i) {
+        return (bAt(s, i) << 8) | bAt(s, i + 1);
+    }
+
+    function u16le(s, i) {
+        return bAt(s, i) | (bAt(s, i + 1) << 8);
+    }
+
+    function u32be(s, i) {
+        return (bAt(s, i) * 16777216) + (bAt(s, i + 1) * 65536) +
+            (bAt(s, i + 2) * 256) + bAt(s, i + 3);
+    }
+
+    function u32le(s, i) {
+        return bAt(s, i) + (bAt(s, i + 1) * 256) +
+            (bAt(s, i + 2) * 65536) + (bAt(s, i + 3) * 16777216);
+    }
+
+    function readBinaryHead(file, maxBytes) {
+        var f = new File(file.fsName);
+        f.encoding = "BINARY";
+        if (!f.open("r")) return "";
+        try {
+            return f.read(maxBytes) || "";
+        } finally {
+            try { f.close(); } catch (eC) {}
+        }
+    }
+
+    function jpegHasIcc(data) {
+        if (data.length < 4) return false;
+        if (bAt(data, 0) !== 0xFF || bAt(data, 1) !== 0xD8) return false;
+        var i = 2;
+        var limit = Math.min(data.length, 1024 * 1024);
+        while (i + 4 < limit) {
+            if (bAt(data, i) !== 0xFF) {
+                i += 1;
+                continue;
+            }
+            var marker = bAt(data, i + 1);
+            if (marker === 0xDA || marker === 0xD9) break;
+            if (marker === 0x00 || marker === 0xFF) {
+                i += 1;
+                continue;
+            }
+            if ((marker >= 0xD0 && marker <= 0xD7) || marker === 0x01) {
+                i += 2;
+                continue;
+            }
+            var len = u16be(data, i + 2);
+            if (len < 2) break;
+            if (marker === 0xE2) {
+                var ident = data.substring(i + 4, i + 16);
+                if (ident.indexOf("ICC_PROFILE") === 0) return true;
+            }
+            i += 2 + len;
+        }
+        return data.substring(0, Math.min(data.length, 512 * 1024)).indexOf("ICC_PROFILE") !== -1;
+    }
+
+    function pngHasProfile(data) {
+        if (data.length < 16) return false;
+        if (bAt(data, 0) !== 0x89 || data.substring(1, 4) !== "PNG") return false;
+        var i = 8;
+        var limit = Math.min(data.length, 1024 * 1024);
+        while (i + 12 <= limit) {
+            var len = u32be(data, i);
+            var type = data.substring(i + 4, i + 8);
+            if (type === "IDAT" || type === "IEND") break;
+            if (type === "iCCP" || type === "sRGB" || type === "cICP") return true;
+            if (len < 0) break;
+            i += 12 + len;
+        }
+        return false;
+    }
+
+    function openBinary(file) {
+        var f = new File(file.fsName);
+        f.encoding = "BINARY";
+        if (!f.open("r")) return null;
+        return f;
+    }
+
+    function tiffFileHasIcc(file) {
+        var f = openBinary(file);
+        if (!f) return null;
+        try {
+            var head = f.read(8);
+            if (!head || head.length < 8) return false;
+            var le = head.substring(0, 2) === "II";
+            var be = head.substring(0, 2) === "MM";
+            if (!le && !be) return false;
+            var magic = le ? u16le(head, 2) : u16be(head, 2);
+            if (magic !== 42) return false;
+            var ifd = le ? u32le(head, 4) : u32be(head, 4);
+            f.seek(ifd, 0);
+            var nbuf = f.read(2);
+            if (!nbuf || nbuf.length < 2) return false;
+            var n = le ? u16le(nbuf, 0) : u16be(nbuf, 0);
+            if (n < 1 || n > 512) return false;
+            var entries = f.read(n * 12);
+            if (!entries) return false;
+            var count = Math.floor(entries.length / 12);
+            var e;
+            for (e = 0; e < count; e++) {
+                var p = e * 12;
+                var tag = le ? u16le(entries, p) : u16be(entries, p);
+                if (tag === 34675) return true;
+            }
+            return false;
+        } finally {
+            try { f.close(); } catch (eC) {}
+        }
+    }
+
+    function psdFileHasIcc(file) {
+        var f = openBinary(file);
+        if (!f) return null;
+        try {
+            var head = f.read(30);
+            if (!head || head.length < 30 || head.substring(0, 4) !== "8BPS") return false;
+            var pos = 30 + u32be(head, 26);
+            f.seek(pos, 0);
+            var lenBuf = f.read(4);
+            if (!lenBuf || lenBuf.length < 4) return false;
+            var end = pos + 4 + u32be(lenBuf, 0);
+            pos += 4;
+            while (pos + 12 <= end) {
+                f.seek(pos, 0);
+                var rec = f.read(7);
+                if (!rec || rec.length < 7) break;
+                if (rec.substring(0, 4) !== "8BIM") break;
+                var id = u16be(rec, 4);
+                var nameLen = bAt(rec, 6);
+                var namePad = nameLen + 1;
+                if (namePad % 2) namePad += 1;
+                var sizeOff = pos + 6 + namePad;
+                f.seek(sizeOff, 0);
+                var sizeBuf = f.read(4);
+                if (!sizeBuf || sizeBuf.length < 4) break;
+                if (id === 1039) return true;
+                var dataPad = u32be(sizeBuf, 0);
+                if (dataPad % 2) dataPad += 1;
+                pos = sizeOff + 4 + dataPad;
+            }
+            return false;
+        } finally {
+            try { f.close(); } catch (eC) {}
+        }
+    }
+
+    // 1 = в исходнике есть ICC/sRGB-тег, 0 = нет, -1 = не смогли прочитать.
+    function detectEmbedFlag(file, fileExt) {
+        try {
+            if (fileExt === ".gif" || fileExt === ".bmp") return 0;
+            if (fileExt === ".tif" || fileExt === ".tiff") {
+                var tif = tiffFileHasIcc(file);
+                if (tif === null) return -1;
+                return tif ? 1 : 0;
+            }
+            if (fileExt === ".psd" || fileExt === ".psb") {
+                var psd = psdFileHasIcc(file);
+                if (psd === null) return -1;
+                return psd ? 1 : 0;
+            }
+            var data = readBinaryHead(file, 1024 * 1024);
+            if (!data) return -1;
+            if (fileExt === ".jpg" || fileExt === ".jpeg") return jpegHasIcc(data) ? 1 : 0;
+            if (fileExt === ".png") return pngHasProfile(data) ? 1 : 0;
+        } catch (eDet) {}
+        return -1;
     }
 
     // Геометрия кропа в пространстве «фрейм не повёрнут».
@@ -319,15 +505,91 @@
             "var targetH = " + num(p.targetH) + ";\n" +
             "var dpi = " + num(p.dpi) + ";\n" +
             "var saveKind = " + num(p.saveKind) + ";\n" +
+            "var embedProfile = " + num(p.embedProfile) + ";\n" +
             "var opened = null;\n" +
             "var work = null;\n" +
             "var wasOpen = false;\n" +
-            "var oldCS = null;\n" +
+            "var oldCSObj = null;\n" +
+            "var oldCSName = null;\n" +
             "function px(v){ return Number(v); }\n" +
+            "function s2t(s){ return stringIDToTypeID(s); }\n" +
+            "function c2t(s){ return charIDToTypeID(s); }\n" +
+            "function getCSObj(){\n" +
+            "  var r = new ActionReference();\n" +
+            "  r.putProperty(c2t('Prpr'), s2t('colorSettings'));\n" +
+            "  r.putEnumerated(c2t('capp'), c2t('Ordn'), c2t('Trgt'));\n" +
+            "  var d = executeActionGet(r);\n" +
+            "  var k = s2t('colorSettings');\n" +
+            "  if (d.hasKey(k)) return d.getObjectValue(k);\n" +
+            "  return d;\n" +
+            "}\n" +
+            "function setCSObj(obj){\n" +
+            "  var d = new ActionDescriptor();\n" +
+            "  var r = new ActionReference();\n" +
+            "  r.putProperty(c2t('Prpr'), s2t('colorSettings'));\n" +
+            "  r.putEnumerated(c2t('capp'), c2t('Ordn'), c2t('Trgt'));\n" +
+            "  d.putReference(c2t('null'), r);\n" +
+            "  d.putObject(c2t('T   '), s2t('colorSettings'), obj);\n" +
+            "  executeAction(c2t('setd'), d, DialogModes.NO);\n" +
+            "}\n" +
+            "function copyCSString(src, dst, key){\n" +
+            "  var k = s2t(key);\n" +
+            "  if (src.hasKey(k)) {\n" +
+            "    try { dst.putString(k, src.getString(k)); } catch (eS) {}\n" +
+            "  }\n" +
+            "}\n" +
+            "function applyPreserve(){\n" +
+            "  var src = getCSObj();\n" +
+            "  var obj = new ActionDescriptor();\n" +
+            "  copyCSString(src, obj, 'workingRGB');\n" +
+            "  copyCSString(src, obj, 'workingCMYK');\n" +
+            "  copyCSString(src, obj, 'workingGray');\n" +
+            "  copyCSString(src, obj, 'workingSpot');\n" +
+            "  obj.putEnumerated(s2t('policyRGB'), s2t('policy'), s2t('preserve'));\n" +
+            "  obj.putEnumerated(s2t('policyCMYK'), s2t('policy'), s2t('preserve'));\n" +
+            "  obj.putEnumerated(s2t('policyGray'), s2t('policy'), s2t('preserve'));\n" +
+            "  obj.putBoolean(s2t('askMismatchOpening'), false);\n" +
+            "  obj.putBoolean(s2t('askMismatchPasting'), false);\n" +
+            "  obj.putBoolean(s2t('askMissing'), false);\n" +
+            "  setCSObj(obj);\n" +
+            "}\n" +
+            "function restoreCS(){\n" +
+            "  if (oldCSObj) { try { setCSObj(oldCSObj); return; } catch (eR1) {} }\n" +
+            "  if (oldCSName) { try { app.colorSettings = oldCSName; } catch (eR2) {} }\n" +
+            "}\n" +
+            "function wantEmbed(){\n" +
+            "  if (embedProfile === 1) return true;\n" +
+            "  if (embedProfile === 0) return false;\n" +
+            "  try { return work.colorProfileType === ColorProfile.CUSTOM; } catch (eE) { return true; }\n" +
+            "}\n" +
+            "function savePngFile(file, embed){\n" +
+            "  try { app.activeDocument = work; } catch (eAct) {}\n" +
+            "  try {\n" +
+            "    var d = new ActionDescriptor();\n" +
+            "    var f = new ActionDescriptor();\n" +
+            "    try { f.putEnumerated(s2t('method'), s2t('PNGMethod'), s2t('quick')); } catch (eM) {}\n" +
+            "    d.putObject(c2t('As  '), s2t('PNGFormat'), f);\n" +
+            "    d.putPath(c2t('In  '), file);\n" +
+            "    d.putBoolean(c2t('Cpy '), true);\n" +
+            "    d.putBoolean(c2t('LwCs'), true);\n" +
+            "    d.putBoolean(s2t('embedProfiles'), embed);\n" +
+            "    d.putBoolean(s2t('convertToSRGB'), false);\n" +
+            "    executeAction(c2t('save'), d, DialogModes.NO);\n" +
+            "    return;\n" +
+            "  } catch (eAM) {}\n" +
+            "  var png = new PNGSaveOptions();\n" +
+            "  png.compression = 6;\n" +
+            "  png.interlaced = false;\n" +
+            "  try { png.embedColorProfile = embed; } catch (eEmb) {}\n" +
+            "  work.saveAs(file, png, true);\n" +
+            "}\n" +
             "try {\n" +
-            "  try { oldCS = app.colorSettings; } catch (eCS0) {}\n" +
-            "  try { app.colorSettings = 'Preserve Embedded Profiles'; } catch (eCS1) {\n" +
-            "    try { app.colorSettings = 'Сохранять встроенные профили'; } catch (eCS2) {}\n" +
+            "  try { oldCSName = app.colorSettings; } catch (eCS0) {}\n" +
+            "  try { oldCSObj = getCSObj(); } catch (eCS1) {}\n" +
+            "  try { applyPreserve(); } catch (eCS2) {\n" +
+            "    try { app.colorSettings = 'Preserve Embedded Profiles'; } catch (eCS3) {\n" +
+            "      try { app.colorSettings = 'Сохранять встроенные профили'; } catch (eCS4) {}\n" +
+            "    }\n" +
             "  }\n" +
             "  if (!src.exists) return 'ERR:source missing';\n" +
             "  var i;\n" +
@@ -385,40 +647,41 @@
             "  } else {\n" +
             "    try { work.resizeImage(undefined, undefined, dpi, ResampleMethod.NONE); } catch (eDpi) {}\n" +
             "  }\n" +
+            "  var embed = wantEmbed();\n" +
+            "  if (!embed) {\n" +
+            "    try { work.colorProfileType = ColorProfile.NONE; } catch (eNone) {}\n" +
+            "  }\n" +
             "  if (saveKind === 1) {\n" +
             "    try {\n" +
             "      if (work.bitsPerChannel !== BitsPerChannelType.EIGHT) work.bitsPerChannel = BitsPerChannelType.EIGHT;\n" +
             "    } catch (eBit) {}\n" +
             "    var jpg = new JPEGSaveOptions();\n" +
             "    jpg.quality = 12;\n" +
-            "    jpg.embedColorProfile = true;\n" +
+            "    jpg.embedColorProfile = embed;\n" +
             "    jpg.formatOptions = FormatOptions.STANDARDBASELINE;\n" +
             "    jpg.matte = MatteType.WHITE;\n" +
             "    work.saveAs(dst, jpg, true);\n" +
             "  } else if (saveKind === 3) {\n" +
             "    var tif = new TiffSaveOptions();\n" +
-            "    tif.embedColorProfile = true;\n" +
+            "    tif.embedColorProfile = embed;\n" +
             "    tif.layers = false;\n" +
             "    try { tif.imageCompression = TIFFEncoding.TIFFLZW; } catch (eEnc) {}\n" +
             "    try { tif.transparency = true; } catch (eTr) {}\n" +
             "    work.saveAs(dst, tif, true);\n" +
             "  } else if (saveKind === 4) {\n" +
             "    var psd = new PhotoshopSaveOptions();\n" +
-            "    psd.embedColorProfile = true;\n" +
+            "    psd.embedColorProfile = embed;\n" +
             "    psd.layers = false;\n" +
             "    work.saveAs(dst, psd, true);\n" +
             "  } else {\n" +
-            "    var png = new PNGSaveOptions();\n" +
-            "    png.compression = 6;\n" +
-            "    png.interlaced = false;\n" +
-            "    work.saveAs(dst, png, true);\n" +
+            "    savePngFile(dst, embed);\n" +
             "  }\n" +
             "  return 'OK';\n" +
             "} catch (e) {\n" +
             "  return 'ERR:' + e.message;\n" +
             "} finally {\n" +
             "  try { if (work) work.close(SaveOptions.DONOTSAVECHANGES); } catch (eW) {}\n" +
-            "  if (oldCS) { try { app.colorSettings = oldCS; } catch (eCS3) {} }\n" +
+            "  restoreCS();\n" +
             "  app.preferences.rulerUnits = oldUnits;\n" +
             "  app.displayDialogs = DialogModes.ALL;\n" +
             "}\n" +
