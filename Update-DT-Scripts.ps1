@@ -10,6 +10,7 @@ $logFile = Join-Path $logDir 'update-last.log'
 $notes = New-Object System.Collections.Generic.List[string]
 $status = 'fail'
 $installTargets = @()
+$techFolder = 'Technical'
 
 function Write-DtLog {
   try {
@@ -30,12 +31,51 @@ function Add-Note([string]$text) {
   Write-Host $text
 }
 
+function Get-PanelFolder($fileEntry) {
+  if ($fileEntry.PSObject.Properties['panelFolder'] -and [string]$fileEntry.panelFolder) {
+    return [string]$fileEntry.panelFolder
+  }
+  return ''
+}
+
+function Test-WindowsOnly($fileEntry) {
+  return [bool]($fileEntry.PSObject.Properties['windowsOnly'] -and $fileEntry.windowsOnly)
+}
+
+function Find-PublisherToolDir {
+  $marker = Join-Path $logDir 'publisher-tool-dir.txt'
+  if (Test-Path -LiteralPath $marker) {
+    $p = ([string](Get-Content -LiteralPath $marker -Raw -ErrorAction SilentlyContinue)).Trim()
+    if ($p -and (Test-Path -LiteralPath (Join-Path $p 'publish.py'))) { return $p }
+  }
+  $candidates = @(
+    (Join-Path $env:USERPROFILE 'Desktop\gitlab\design-terminal\sandbox\scripts\Indesign - Template Publisher')
+    (Join-Path $env:USERPROFILE 'Desktop\design-terminal\sandbox\scripts\Indesign - Template Publisher')
+  )
+  foreach ($c in $candidates) {
+    if (Test-Path -LiteralPath (Join-Path $c 'publish.py')) {
+      New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+      [System.IO.File]::WriteAllText($marker, $c)
+      return $c
+    }
+  }
+  return $null
+}
+
+function Add-Keep([hashtable]$keep, [string]$folder, [string]$name) {
+  if (-not $keep.ContainsKey($folder)) { $keep[$folder] = @{} }
+  $keep[$folder][$name] = $true
+}
+
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 try {
   Add-Note "Downloading manifest: $base/manifest.json"
   $manifestPath = Join-Path $tmp 'manifest.json'
   Invoke-WebRequest -Uri "$base/manifest.json" -OutFile $manifestPath -UseBasicParsing
   $m = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($m.PSObject.Properties['technicalFolder'] -and [string]$m.technicalFolder) {
+    $techFolder = [string]$m.technicalFolder
+  }
 
   $indesignRoot = Join-Path $env:APPDATA 'Adobe\InDesign'
   if (!(Test-Path -LiteralPath $indesignRoot)) {
@@ -60,6 +100,7 @@ try {
   $legacySubdirs = @('DT Scripts GitHub Auto')
   Add-Note ("kitUpdatedAt={0}" -f $m.updatedAt)
   Add-Note ("panelSubdir={0}" -f $subdir)
+  Add-Note ("technicalFolder={0}" -f $techFolder)
   Add-Note ("InDesign Version {0}: installing into {1} Scripts Panel folder(s)" -f $maxVer, $targets.Count)
 
   $downloaded = @{}
@@ -77,27 +118,49 @@ try {
     $downloaded[$f.name] = $dl
   }
 
+  $publisherToolDir = Find-PublisherToolDir
+  if ($publisherToolDir) {
+    Add-Note ("publisherToolDir={0}" -f $publisherToolDir)
+  }
+
   foreach ($panel in $targets) {
     $target = Join-Path $panel.FullName $subdir
     New-Item -ItemType Directory -Path $target -Force | Out-Null
     $installTargets += $target
     Add-Note "Target: $target"
+
+    $keep = @{}
+    Add-Keep $keep '' 'tool-dir.txt'
+    Add-Keep $keep '' $techFolder
+
     foreach ($f in $m.files) {
-      $dl = $downloaded[$f.name]
-      $dest = Join-Path $target $f.name
-      Get-ChildItem -LiteralPath $target -Filter ($f.id + '-*.jsx') -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -ne $f.name } |
-        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
-      Copy-Item -LiteralPath $dl -Destination $dest -Force
+      $folder = Get-PanelFolder $f
+      $destDir = if ($folder) { Join-Path $target $folder } else { $target }
+      New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+      Copy-Item -LiteralPath $downloaded[$f.name] -Destination (Join-Path $destDir $f.name) -Force
+      Add-Keep $keep $folder $f.name
+      if ($folder) { Add-Keep $keep '' $folder }
     }
-    foreach ($staleName in @('ImageAndFontSyncer-*.jsx', 'ImageLinkSyncer-*.jsx', 'FontSyncer-*.jsx', 'MiniPackage-*.jsx', 'TerminalSyncer-*.jsx')) {
-      Get-ChildItem -LiteralPath $target -Filter $staleName -File -ErrorAction SilentlyContinue |
-        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+
+    $pub = @($m.files | Where-Object { $_.id -eq 'PublishTemplate' }) | Select-Object -First 1
+    if ($pub -and $publisherToolDir) {
+      $pubFolder = Get-PanelFolder $pub
+      $pubDir = if ($pubFolder) { Join-Path $target $pubFolder } else { $target }
+      [System.IO.File]::WriteAllText((Join-Path $pubDir 'tool-dir.txt'), $publisherToolDir)
+      Add-Keep $keep $pubFolder 'tool-dir.txt'
     }
-    $staleArchive = Join-Path $target '_old'
-    if (Test-Path -LiteralPath $staleArchive) {
-      Remove-Item -LiteralPath $staleArchive -Recurse -Force
+
+    foreach ($folder in @($keep.Keys)) {
+      $dir = if ($folder) { Join-Path $target $folder } else { $target }
+      if (!(Test-Path -LiteralPath $dir)) { continue }
+      Get-ChildItem -LiteralPath $dir -Force | ForEach-Object {
+        if (-not $keep[$folder].ContainsKey($_.Name)) {
+          Add-Note ("  remove {0}" -f $_.FullName.Substring($target.Length).TrimStart('\'))
+          Remove-Item -LiteralPath $_.FullName -Recurse -Force
+        }
+      }
     }
+
     foreach ($legacy in $legacySubdirs) {
       $legacyPath = Join-Path $panel.FullName $legacy
       if ((Test-Path -LiteralPath $legacyPath) -and ($legacy -ne $subdir)) {
@@ -120,7 +183,14 @@ catch {
 finally {
   Write-DtLog
   foreach ($t in $installTargets) {
-    try { Copy-Item -LiteralPath $logFile -Destination (Join-Path $t '_update-last.log') -Force } catch {}
+    try {
+      $tech = Join-Path $t $techFolder
+      New-Item -ItemType Directory -Path $tech -Force | Out-Null
+      Get-ChildItem -LiteralPath $tech -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne '_update-last.log' } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+      Copy-Item -LiteralPath $logFile -Destination (Join-Path $tech '_update-last.log') -Force
+    } catch {}
   }
   if (Test-Path -LiteralPath $logFile) {
     Write-Host "Log: $logFile"

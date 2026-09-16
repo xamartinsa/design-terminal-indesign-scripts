@@ -8,11 +8,25 @@ set -euo pipefail
 
 BASE_URL="${DT_SCRIPTS_BASE_URL:-https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main}"
 BASE_URL="${BASE_URL%/}"
+
+# Old .command in Downloads: fetch the current updater, then run that.
+if [[ "${DT_UPDATER_BOOTSTRAPPED:-}" != "1" ]]; then
+  BOOT_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dt-indesign-boot.XXXXXX")"
+  if curl -fsSL "$BASE_URL/Update-DT-Scripts.command" -o "$BOOT_TMP/Update-DT-Scripts.command"; then
+    chmod +x "$BOOT_TMP/Update-DT-Scripts.command" 2>/dev/null || true
+    export DT_UPDATER_BOOTSTRAPPED=1
+    export DT_SCRIPTS_BASE_URL="$BASE_URL"
+    exec bash "$BOOT_TMP/Update-DT-Scripts.command"
+  fi
+fi
+
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/dt-indesign-kit.XXXXXX")"
 LOG_DIR="$HOME/Library/Logs/DesignTerminal"
 LOG_FILE="$LOG_DIR/update-last.log"
 STATUS="fail"
 NOTES=()
+TECH_FOLDER="Technical"
+INSTALL_TARGETS=()
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 
@@ -37,6 +51,12 @@ write_log() {
 
 cleanup() {
   write_log
+  local t
+  for t in "${INSTALL_TARGETS[@]:-}"; do
+    mkdir -p "$t/$TECH_FOLDER" 2>/dev/null || true
+    find "$t/$TECH_FOLDER" -mindepth 1 -maxdepth 1 ! -name '_update-last.log' -exec rm -rf {} + 2>/dev/null || true
+    cp -f "$LOG_FILE" "$t/$TECH_FOLDER/_update-last.log" 2>/dev/null || true
+  done
   rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -90,19 +110,32 @@ const manifestPath = env.objectForKey("DT_MANIFEST_PATH").js;
 const outPath = env.objectForKey("DT_MAP_PATH").js;
 const m = JSON.parse(readUtf8(manifestPath));
 const lines = [];
-lines.push((m.updatedAt || "") + "\t" + (m.panelSubdir || "Design Terminal Git"));
+lines.push([
+  m.updatedAt || "",
+  m.panelSubdir || "Design Terminal Git",
+  m.technicalFolder || "Technical"
+].join("\t"));
 for (const f of (m.files || [])) {
-  lines.push([f.id, f.name, String(f.sha256 || "").toLowerCase()].join("\t"));
+  lines.push([
+    f.id || "",
+    f.name || "",
+    String(f.sha256 || "").toLowerCase(),
+    f.panelFolder || "",
+    f.windowsOnly ? "1" : "0"
+  ].join("\t"));
 }
 writeUtf8(outPath, lines.join("\n") + "\n");
 JXA
 
 HEADER="$(head -n 1 "$MAP_FILE")"
-UPDATED_AT="${HEADER%%$'\t'*}"
-SUBDIR="${HEADER#*$'\t'}"
+UPDATED_AT="$(printf '%s' "$HEADER" | cut -f1)"
+SUBDIR="$(printf '%s' "$HEADER" | cut -f2)"
+TECH_FOLDER="$(printf '%s' "$HEADER" | cut -f3)"
 [[ -n "$SUBDIR" ]] || SUBDIR="Design Terminal Git"
+[[ -n "$TECH_FOLDER" ]] || TECH_FOLDER="Technical"
 log_line "kitUpdatedAt=$UPDATED_AT"
 log_line "panelSubdir=$SUBDIR"
+log_line "technicalFolder=$TECH_FOLDER"
 
 ROOT="$HOME/Library/Preferences/Adobe InDesign"
 [[ -d "$ROOT" ]] || die "Adobe InDesign preferences not found:
@@ -137,8 +170,12 @@ done < "$PANEL_LIST"
 
 log_line "InDesign Version $MAX_VER: installing into ${#TARGETS[@]} Scripts Panel folder(s)"
 
-while IFS=$'\t' read -r id name sha; do
+while IFS=$'\t' read -r id name sha folder winonly; do
   [[ -n "${name:-}" ]] || continue
+  if [[ "${winonly:-0}" == "1" ]]; then
+    log_line "  skip $id (Windows only)"
+    continue
+  fi
   log_line "  download $id -> $name"
   curl -fsSL "$BASE_URL/kit/$name" -o "$TMP/$name" || die "failed to download $name"
   got="$(shasum -a 256 "$TMP/$name" | awk '{ print tolower($1) }')"
@@ -149,17 +186,64 @@ while IFS=$'\t' read -r id name sha; do
   fi
 done < <(tail -n +2 "$MAP_FILE")
 
+keep_has() {
+  local file="$1"
+  local folder="$2"
+  local name="$3"
+  awk -F '\t' -v f="$folder" -v n="$name" '$1==f && $2==n { found=1 } END { exit !found }' "$file"
+}
+
 for panel in "${TARGETS[@]}"; do
   target="$panel/$SUBDIR"
   mkdir -p "$target"
+  INSTALL_TARGETS+=("$target")
   log_line "Target: $target"
-  while IFS=$'\t' read -r id name sha; do
+  KEEP="$TMP/keep-$(echo "$target" | shasum -a 256 | awk '{ print $1 }').tsv"
+  : > "$KEEP"
+  printf '%s\t%s\n' "" "tool-dir.txt" >> "$KEEP"
+  printf '%s\t%s\n' "" "$TECH_FOLDER" >> "$KEEP"
+
+  while IFS=$'\t' read -r id name sha folder winonly; do
     [[ -n "${name:-}" ]] || continue
-    find "$target" -maxdepth 1 -type f -name "${id}-*.jsx" ! -name "$name" -delete 2>/dev/null || true
-    cp -f "$TMP/$name" "$target/$name"
+    if [[ "${winonly:-0}" == "1" ]]; then
+      continue
+    fi
+    dest_dir="$target"
+    if [[ -n "${folder:-}" ]]; then
+      dest_dir="$target/$folder"
+      printf '%s\t%s\n' "" "$folder" >> "$KEEP"
+    fi
+    mkdir -p "$dest_dir"
+    cp -f "$TMP/$name" "$dest_dir/$name"
+    printf '%s\t%s\n' "${folder:-}" "$name" >> "$KEEP"
   done < <(tail -n +2 "$MAP_FILE")
-  find "$target" -maxdepth 1 -type f \( -name 'ImageAndFontSyncer-*.jsx' -o -name 'ImageLinkSyncer-*.jsx' -o -name 'FontSyncer-*.jsx' -o -name 'MiniPackage-*.jsx' -o -name 'TerminalSyncer-*.jsx' \) -delete 2>/dev/null || true
-  [[ -d "$target/_old" ]] && rm -rf "$target/_old"
+
+  # Managed folder: drop Archive, barcode, old preparators, leftover root files.
+  folders=("")
+  while IFS=$'\t' read -r folder name; do
+    [[ -n "$folder" ]] || continue
+    skip=0
+    for existing in "${folders[@]}"; do
+      if [[ "$existing" == "$folder" ]]; then skip=1; break; fi
+    done
+    if [[ $skip -eq 0 ]]; then folders+=("$folder"); fi
+  done < "$KEEP"
+
+  for folder in "${folders[@]}"; do
+    dir="$target"
+    [[ -n "$folder" ]] && dir="$target/$folder"
+    [[ -d "$dir" ]] || continue
+    while IFS= read -r -d '' item; do
+      base="$(basename "$item")"
+      if keep_has "$KEEP" "$folder" "$base"; then
+        continue
+      fi
+      rel="${item#$target/}"
+      log_line "  remove $rel"
+      rm -rf "$item"
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0)
+  done
+
   for legacy in "DT Scripts GitHub Auto"; do
     if [[ "$legacy" != "$SUBDIR" && -d "$panel/$legacy" ]]; then
       rm -rf "$panel/$legacy"
@@ -174,7 +258,4 @@ log_line "Done. Installed scripts into '$SUBDIR' (${#TARGETS[@]} locale folder(s
 echo "Look in Scripts panel for that folder. Older InDesign versions were not changed."
 echo "Restart InDesign if the Scripts panel looks stale."
 write_log
-for panel in "${TARGETS[@]}"; do
-  cp -f "$LOG_FILE" "$panel/$SUBDIR/_update-last.log" 2>/dev/null || true
-done
 pause_close

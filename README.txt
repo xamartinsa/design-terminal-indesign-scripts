@@ -70,14 +70,19 @@ bash ~/Downloads/Update-DT-Scripts.command
 
 ## Что внутри набора
 
+Корень:
+
 - TerminalPreparator  
 - LegalParagraphSetup  
 - ImageCroper  
 - Syncer  
 - SaveAsInddAndIdml  
-- TerminalBelarusPreparator  
 - AutoFontSizeGrep  
-- LegalBarcodeInsert (+ шрифт Tall120 в ту же папку) 
+- PublishTemplate (Windows; нужны Python + один раз `login.bat`)
+
+Папка **Advanced**: TerminalBelarusPreparator  
+
+Папка **Technical**: лог апдейтера, не скрипт.
 
 ## Если апдейтер уже открылся, но упал с ошибкой
 
@@ -87,7 +92,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 |---------|----------------|
 | Mac | `~/Library/Logs/DesignTerminal/update-last.log` |
 | Windows | `%LOCALAPPDATA%\DesignTerminal\update-last.log` |
-| Оба | рядом со скриптами: `Design Terminal Git/_update-last.log` |
+| Оба | `Design Terminal Git/Technical/_update-last.log` |
 
 На Mac в Finder: Cmd+Shift+G → вставь путь → Enter.
 
@@ -107,7 +112,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 xattr -cr ~/Downloads/Update-DT-Scripts.command && chmod +x ~/Downloads/Update-DT-Scripts.command && open ~/Downloads/Update-DT-Scripts.command
 ```
 
-Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/_update-last.log`
+Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/Technical/_update-last.log`
 
 ---
 
