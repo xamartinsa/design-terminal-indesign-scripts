@@ -1916,40 +1916,15 @@ function addPagedReportPane(parent, text, metrics, boxH) {
 }
 
 function addReportTabs(parent, errorsText, logText, metrics) {
-    var logShow = String(logText || "").replace(/\s+$/, "");
-    var paneMargins = metrics.paneMargins;
-
-    if (isBlankReport(logShow)) {
-        var pane = parent.add("group");
-        pane.orientation = "column";
-        pane.alignChildren = ["fill", "top"];
-        pane.alignment = ["fill", "top"];
-        pane.margins = paneMargins;
-        addPagedReportPane(pane, errorsText, metrics, reportPaneHeight(metrics, false));
-        return pane;
-    }
-
-    var tpanel = parent.add("tabbedpanel");
-    tpanel.alignChildren = ["fill", "fill"];
-    sizeTabbedPanel(tpanel, metrics);
-
-    var paneH = reportPaneHeight(metrics, true);
-    var tabErr = tpanel.add("tab", undefined, "Важное");
-    tabErr.orientation = "column";
-    tabErr.alignChildren = ["fill", "top"];
-    tabErr.margins = paneMargins;
-    tabErr.spacing = 6;
-    addPagedReportPane(tabErr, errorsText, metrics, paneH);
-
-    var tabLog = tpanel.add("tab", undefined, "Неважное");
-    tabLog.orientation = "column";
-    tabLog.alignChildren = ["fill", "top"];
-    tabLog.margins = paneMargins;
-    tabLog.spacing = 6;
-    addPagedReportPane(tabLog, logShow, metrics, paneH);
-
-    tpanel.selection = tabErr;
-    return tpanel;
+    // 1.99: no Важное/Неважное tabs. Log still goes to persistPrepReport / silent file.
+    var pane = parent.add("group");
+    pane.orientation = "column";
+    pane.alignChildren = ["fill", "top"];
+    pane.alignment = ["fill", "top"];
+    pane.margins = metrics.paneMargins;
+    pane.spacing = 6;
+    addPagedReportPane(pane, errorsText, metrics, reportPaneHeight(metrics, false));
+    return pane;
 }
 
 function showTabbedReportDialog(errorsText, logText) {
@@ -2153,9 +2128,7 @@ function showAllOkDanceDialog(reportText, logText) {
 
     var metrics = dialogBoxMetrics();
     var boxW = metrics.boxW;
-    var logStr = String(logText || "").replace(/\s+$/, "");
-    var hasTabs = !isBlankReport(logStr);
-    var dancerH = Math.max(96, reportPaneHeight(metrics, hasTabs) - 28);
+    var dancerH = Math.max(96, reportPaneHeight(metrics, false) - 28);
 
     var fwCols = Math.max(46, Math.floor(boxW / 5));
     var fwRows = Math.max(18, Math.floor(dancerH / 12));
@@ -2167,32 +2140,12 @@ function showAllOkDanceDialog(reportText, logText) {
     w.margins = 8;
     w.spacing = 8;
 
-    var okParent = w;
-    if (hasTabs) {
-        var tpanel = w.add("tabbedpanel");
-        tpanel.alignChildren = ["fill", "fill"];
-        sizeTabbedPanel(tpanel, metrics);
-        var tabOk = tpanel.add("tab", undefined, "Важное");
-        tabOk.orientation = "column";
-        tabOk.alignChildren = ["fill", "top"];
-        tabOk.margins = metrics.paneMargins;
-        tabOk.spacing = 6;
-        var tabLog = tpanel.add("tab", undefined, "Неважное");
-        tabLog.orientation = "column";
-        tabLog.alignChildren = ["fill", "top"];
-        tabLog.margins = metrics.paneMargins;
-        tabLog.spacing = 6;
-        addPagedReportPane(tabLog, logStr, metrics, reportPaneHeight(metrics, true));
-        tpanel.selection = tabOk;
-        okParent = tabOk;
-    } else {
-        var pane = w.add("group");
-        pane.orientation = "column";
-        pane.alignChildren = ["fill", "top"];
-        pane.alignment = ["fill", "top"];
-        pane.margins = metrics.paneMargins;
-        okParent = pane;
-    }
+    var pane = w.add("group");
+    pane.orientation = "column";
+    pane.alignChildren = ["fill", "top"];
+    pane.alignment = ["fill", "top"];
+    pane.margins = metrics.paneMargins;
+    var okParent = pane;
 
     var et = okParent.add("statictext", undefined, reportText, {multiline: true});
     et.preferredSize = [boxW, 22];
