@@ -2,6 +2,19 @@
 
 (function () {
 
+// Batch sets scriptArgs.silent=1 right before doScript. This file is
+// #targetengine, and a nested doScript starts with dialogs on again, so
+// NEVER_INTERACT alone does not skip the ScriptUI OK. Read the flag, then
+// clear it immediately: it lives on the Application, and a leftover "1"
+// would hide the next Scripts-panel window.
+var prepSilentFromArg = false;
+try {
+    if (app.scriptArgs.isDefined("silent") && String(app.scriptArgs.getValue("silent")) === "1") {
+        prepSilentFromArg = true;
+        app.scriptArgs.setValue("silent", "0");
+    }
+} catch (eSilentArg) {}
+
 function getLiveDocument() {
     var d, i, n;
     try {
@@ -33,7 +46,9 @@ try { stopPrepDance(); } catch (eStop0) {}
 
 var doc = getLiveDocument();
 if (!doc) {
-    alert("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u0437\u044f\u0442\u044c \u043c\u0430\u043a\u0435\u0442. \u0417\u0430\u043a\u0440\u043e\u0439 \u043e\u043a\u043d\u043e \u043e\u0448\u0438\u0431\u043a\u0438 \u0438 \u043e\u0442\u0447\u0451\u0442 Preparator, \u043a\u043b\u0438\u043a\u043d\u0438 \u043f\u043e \u043c\u0430\u043a\u0435\u0442\u0443.");
+    if (!prepSilentFromArg) {
+        alert("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u0437\u044f\u0442\u044c \u043c\u0430\u043a\u0435\u0442. \u0417\u0430\u043a\u0440\u043e\u0439 \u043e\u043a\u043d\u043e \u043e\u0448\u0438\u0431\u043a\u0438 \u0438 \u043e\u0442\u0447\u0451\u0442 Preparator, \u043a\u043b\u0438\u043a\u043d\u0438 \u043f\u043e \u043c\u0430\u043a\u0435\u0442\u0443.");
+    }
     return;
 }
 
@@ -1675,9 +1690,7 @@ function formatNotInLinksReport(items, expectedLinksFolder, maxExamples) {
 }
 
 function isSilentPreparatorRun() {
-    // Only NEVER_INTERACT. Do not read scriptArgs.silent: it lives on the
-    // shared Application, so a leftover "1" from an agent batch would hide
-    // the Scripts-panel dialog on the next human click.
+    if (prepSilentFromArg) return true;
     try {
         if (app.scriptPreferences.userInteractionLevel === UserInteractionLevels.NEVER_INTERACT) {
             return true;

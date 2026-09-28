@@ -1,14 +1,14 @@
 {
-    "updatedAt":  "2026-09-18T13:20:45Z",
+    "updatedAt":  "2026-09-28T11:20:35Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "technicalFolder":  "zzz Technical",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
-                      "name":  "TerminalPreparator-1.99.jsx",
-                      "version":  "1.99",
-                      "sha256":  "12dba077cacb472aca557154ef448f333df772e2885a70426d023dc07e0ae03f"
+                      "name":  "TerminalPreparator-1.100.jsx",
+                      "version":  "1.100",
+                      "sha256":  "c561c9c3418c75e3ec0e3b5c1e81182715790a23daf3fa7e537056c77a17fc1a"
                   },
                   {
                       "id":  "LegalParagraphSetup",
@@ -26,7 +26,7 @@
                       "id":  "Syncer",
                       "name":  "Syncer-1.1.jsx",
                       "version":  "1.1",
-                      "sha256":  "a33e1a31677553f9924611873164713aae9e56b3c57e1f5ee2d66e0533d85686"
+                      "sha256":  "d69187a641dee38e76f3310c87e0adb935e5c7da1bc617a5215863002e1e0b47"
                   },
                   {
                       "id":  "SaveAsInddAndIdml",

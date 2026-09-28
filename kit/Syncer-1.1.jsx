@@ -538,7 +538,7 @@
         lines.push("  удалено лишних: " + linkRemoved);
     }
     if (linkCopied === 0 && linkRemoved === 0 && linkErrors.length === 0 && linkMissing.length === 0) {
-        lines.push("  уже в порядке");
+        lines.push("✓ Ok");
     }
     if (linkMissing.length > 0) {
         lines.push("  слетели: " + linkMissing.join(", "));
@@ -568,7 +568,7 @@
         }
     }
     if (fontCopied === 0 && fontRemoved === 0 && fontMissing.length === 0 && fontSkipped.length === 0) {
-        lines.push("  уже в порядке");
+        lines.push("✓ Ok");
     }
     if (fontMissing.length > 0) {
         lines.push("  нет в системе (не копировал, папку не чистил):");
@@ -594,7 +594,7 @@
     if (hasProblems) {
         lines.push("Готово, но есть замечания.");
     } else {
-        lines.push("✓ Всё ок");
+        lines.push("✓ Ok");
     }
 
     alert(lines.join("\n"));
