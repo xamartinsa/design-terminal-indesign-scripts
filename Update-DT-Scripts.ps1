@@ -142,7 +142,7 @@ try {
       if ($folder) { Add-Keep $keep '' $folder }
     }
 
-    $pub = @($m.files | Where-Object { $_.id -eq 'PublishTemplate' }) | Select-Object -First 1
+    $pub = @($m.files | Where-Object { $_.id -eq 'Publisher' -or $_.id -eq 'PublishTemplate' }) | Select-Object -First 1
     if ($pub -and $publisherToolDir) {
       $techDir = Join-Path $target $techFolder
       New-Item -ItemType Directory -Path $techDir -Force | Out-Null

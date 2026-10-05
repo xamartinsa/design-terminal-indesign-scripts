@@ -78,7 +78,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - Syncer  
 - SaveAsInddAndIdml  
 - AutoFontSizeGrep  
-- PublishTemplate (Windows; нужны Python + один раз `login.bat`)
+- Publisher (Windows; нужны Python + один раз `login.bat`)
 
 Папка **zzz Advanced**: TerminalBelarusPreparator  
 
