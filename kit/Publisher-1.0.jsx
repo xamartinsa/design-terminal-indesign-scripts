@@ -200,23 +200,37 @@
         return "Publisher";
     }
 
+    function vbsString(s) {
+        return String(s).replace(/"/g, '""');
+    }
+
     function launchDetached(toolDir, jobFile, title) {
-        var cmdFile = new File(toolDir.fsName + "/publish-detached.cmd");
-        if (!cmdFile.exists) {
-            throw new Error("\u043d\u0435\u0442 publish-detached.cmd \u0440\u044f\u0434\u043e\u043c \u0441 publish.py");
+        var pyTxt = new File(toolDir.fsName + "/python-exe.txt");
+        if (!pyTxt.exists) {
+            throw new Error("\u043d\u0435\u0442 python-exe.txt. \u0417\u0430\u043f\u0443\u0441\u0442\u0438 Copy-Latest.bat");
         }
-        var launcher = new File(Folder.temp.fsName + "/dt-publish-run.cmd");
-        launcher.encoding = "UTF-8";
+        pyTxt.open("r");
+        var python = String(pyTxt.readln()).replace(/^\s+|\s+$/g, "");
+        pyTxt.close();
+        if (!python || !(new File(python)).exists) {
+            throw new Error("Python \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: " + python);
+        }
+        var publishPy = new File(toolDir.fsName + "/publish.py");
+        if (!publishPy.exists) {
+            throw new Error("\u043d\u0435\u0442 publish.py");
+        }
+        var launcher = new File(Folder.temp.fsName + "/dt-publish-run-" + Date.now() + ".vbs");
         if (!launcher.open("w")) {
             throw new Error("\u043d\u0435 \u0441\u043c\u043e\u0433 \u043d\u0430\u043f\u0438\u0441\u0430\u0442\u044c launcher \u0432 Temp");
         }
-        launcher.writeln("@echo off");
-        launcher.writeln("title " + title);
-        launcher.writeln("call \"" + cmdFile.fsName + "\" --job \"" + jobFile.fsName + "\"");
+        var cmd = '"' + python + '" "' + publishPy.fsName + '" --job "' + jobFile.fsName + '"';
+        launcher.writeln('Set shell = CreateObject("WScript.Shell")');
+        launcher.writeln('shell.CurrentDirectory = "' + vbsString(toolDir.fsName) + '"');
+        launcher.writeln('shell.Run "' + vbsString(cmd) + '", 0, False');
         launcher.close();
-        noteLog(toolDir, "[" + new Date().toString() + "] jsx -> " + launcher.fsName);
+        noteLog(toolDir, "[" + new Date().toString() + "] hidden " + title + " -> " + launcher.fsName);
         if (!launcher.execute()) {
-            throw new Error("File.execute \u043d\u0435 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u043b " + launcher.fsName);
+            throw new Error("\u043d\u0435 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u043b \u0441\u043a\u0440\u044b\u0442\u0443\u044e \u0437\u0430\u043b\u0438\u0432\u043a\u0443");
         }
     }
 

@@ -1,8 +1,14 @@
 ﻿#target "indesign"
 
-// ImageCroper 6.2
+// ImageCroper 6.3
 // Кроп выбранного image-фрейма через Photoshop (исходные пиксели).
 // Цветовое пространство и ICC не трогаем: как было в файле, так и остаётся.
+//
+// 6.2 читал image.rotationAngle и прямоугольник geometricBounds.
+// У картинки rotationAngle часто не равен матрице: у логотипа угол фрейма,
+// у фото 0 при живом повороте в матрице. Прямоугольник bounds — это габарит,
+// не углы пути. 6.3 берёт углы пути, переводит их в пиксели файла и
+// запекает именно это окно. Рядом с кропом пишет текстовый лог.
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -20,7 +26,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.2";
+    var SCRIPT_VERSION = "6.3";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -87,49 +93,72 @@
     var oldUI = app.scriptPreferences.userInteractionLevel;
     var oldRedraw = app.scriptPreferences.enableRedraw;
 
+    var logLines = [];
+    var logFile = null;
+
     try {
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.MILLIMETERS;
         doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.MILLIMETERS;
-        app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
-        app.scriptPreferences.enableRedraw = false;
-
-        var geom = measureCropGeometry(frame, img);
-        if (!geom.ok) {
-            showMessage("Ошибка", geom.error);
-            return;
-        }
-
         var pageArea = Math.round(
             doc.documentPreferences.pageWidth * doc.documentPreferences.pageHeight
         );
+        doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.POINTS;
+        doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.POINTS;
+        app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
+        app.scriptPreferences.enableRedraw = false;
+
         var targetDpi = getMinPPI(pageArea);
         var effective = Math.min(img.effectivePpi[0], img.effectivePpi[1]);
         var finalDpi = effective < targetDpi ? Math.round(effective) : targetDpi;
         if (!(finalDpi > 0)) finalDpi = targetDpi;
 
-        var targetW = mmToPx(geom.frameWmm, finalDpi);
-        var targetH = mmToPx(geom.frameHmm, finalDpi);
+        var geom = measureCropGeometry(frame, img, origFile, ext);
+        logLines = geom.log || [];
+        logFile = new File(
+            origFile.path + "/" + origFile.name.replace(/\.[^\.]+$/, "") + "_cropped.log"
+        );
+        if (!geom.ok) {
+            logLines.push("ERROR " + geom.error);
+            writeTextLog(logFile, logLines);
+            showMessage("Ошибка", geom.error + "\n\nЛог:\n" + logFile.fsName);
+            return;
+        }
+
+        var targetW = Math.max(1, Math.round(geom.wantWpt / 72 * finalDpi));
+        var targetH = Math.max(1, Math.round(geom.wantHpt / 72 * finalDpi));
 
         var destFile = new File(
             origFile.path + "/" + origFile.name.replace(/\.[^\.]+$/, "") + "_cropped" + newExt
         );
+        logFile = new File(destFile.fsName.replace(/\.[^\.]+$/, "") + ".log");
+
+        logLines.push("targetDpi " + targetDpi);
+        logLines.push("effectivePpi " + Math.round(effective));
+        logLines.push("finalDpi " + finalDpi);
+        logLines.push("targetPx " + targetW + "x" + targetH);
+        logLines.push("dest " + destFile.fsName);
 
         var warn = "";
         if (effective < targetDpi) {
-            warn = "\n\n⚠ Разрешение исходника (" + Math.round(effective) +
+            warn = "\n\nРазрешение исходника (" + Math.round(effective) +
                 " ppi) ниже требуемого (" + targetDpi + " ppi). Не растягивал.";
+            logLines.push("WARN source ppi below target, did not upscale");
+        }
+        if (geom.warning) {
+            warn += "\n\n" + geom.warning;
+            logLines.push("WARN " + geom.warning);
         }
 
         var psResult = runPhotoshopCrop({
             srcURI: origFile.absoluteURI,
             dstURI: destFile.absoluteURI,
-            cropL: geom.cropL,
-            cropT: geom.cropT,
-            cropR: geom.cropR,
-            cropB: geom.cropB,
+            cropLeft: geom.cropLeft,
+            cropTop: geom.cropTop,
+            cropRight: geom.cropRight,
+            cropBottom: geom.cropBottom,
+            predW: geom.predW,
+            predH: geom.predH,
             rotDeg: geom.psRotateDeg,
-            flipH: geom.flipH,
-            flipV: geom.flipV,
             targetW: targetW,
             targetH: targetH,
             dpi: finalDpi,
@@ -137,13 +166,17 @@
             embedProfile: embedProfile
         });
 
-        if (psResult !== "OK") {
-            showMessage("Ошибка", photoshopErrorText(psResult));
+        logLines.push("photoshop " + psResult);
+        if (psResult.indexOf("OK") !== 0) {
+            writeTextLog(logFile, logLines);
+            showMessage("Ошибка", photoshopErrorText(psResult) + "\n\nЛог:\n" + logFile.fsName);
             return;
         }
 
         destFile = new File(destFile.fsName);
         if (!destFile.exists) {
+            logLines.push("ERROR dest missing");
+            writeTextLog(logFile, logLines);
             showMessage("Ошибка", "Photoshop не записал файл:\n" + destFile.fsName);
             return;
         }
@@ -157,21 +190,30 @@
         doc.recompose();
 
         var newImg = frame.images[0];
-        try { newImg.rotationAngle = 0; } catch (eRot) {}
-        try { newImg.horizontalScale = 100; } catch (eHs) {}
-        try { newImg.verticalScale = 100; } catch (eVs) {}
-        frame.fit(FitOptions.FILL_PROPORTIONALLY);
-        frame.fit(FitOptions.CENTER_CONTENT);
+        placeImageOnPath(newImg, geom);
+        doc.recompose();
+        logLines.push("placed rotCCW " + round3(matrixRot(newImg)) +
+            " hScale " + round3(newImg.horizontalScale) +
+            " vScale " + round3(newImg.verticalScale));
 
         if (wasLocked) {
             try { frame.locked = true; } catch (eRelock) {}
         }
 
+        writeTextLog(logFile, logLines);
         showMessage(
             "Готово",
-            "ImageCroper " + SCRIPT_VERSION + " — кроп через Photoshop." + warn
+            "ImageCroper " + SCRIPT_VERSION + "\n" + destFile.name + warn +
+                "\n\nЛог:\n" + logFile.fsName
         );
     } catch (e) {
+        try {
+            logLines.push("ERROR " + String(e.message || e));
+            if (!logFile) {
+                logFile = new File(origFile.path + "/" + origFile.name.replace(/\.[^\.]+$/, "") + "_cropped.log");
+            }
+            writeTextLog(logFile, logLines);
+        } catch (eLog) {}
         showMessage("Ошибка", String(e.message || e));
     } finally {
         try { doc.viewPreferences.horizontalMeasurementUnits = oldH; } catch (e1) {}
@@ -397,61 +439,319 @@
         return -1;
     }
 
-    // Геометрия кропа в пространстве «фрейм не повёрнут».
-    // Повёрнутый фрейм: дубликат на мгновение с absoluteRotationAngle = 0,
-    // иначе page AABB врёт (лишние углы).
-    function measureCropGeometry(srcFrame, srcImg) {
-        var useDup = !almostZero(srcFrame.absoluteRotationAngle, ANGLE_EPS);
-        var f = srcFrame;
-        var im = srcImg;
-        var dup = null;
+    function round3(v) {
+        return Math.round(Number(v) * 1000) / 1000;
+    }
+
+    function dist2(a, b) {
+        var dx = a[0] - b[0];
+        var dy = a[1] - b[1];
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function writeTextLog(file, lines) {
+        var f = new File(file.fsName);
+        f.encoding = "UTF-8";
+        if (!f.open("w")) return false;
         try {
-            if (useDup) {
-                dup = srcFrame.duplicate();
-                dup.absoluteRotationAngle = 0;
-                f = dup;
-                im = dup.images[0];
+            f.write("\uFEFFImageCroper " + SCRIPT_VERSION + "\r\n");
+            f.write(lines.join("\r\n"));
+            f.write("\r\n");
+        } finally {
+            try { f.close(); } catch (eC) {}
+        }
+        return true;
+    }
+
+    function pathAnchors(frame) {
+        var ep = frame.paths[0].entirePath;
+        var pts = [];
+        var i, p;
+        for (i = 0; i < ep.length; i++) {
+            p = ep[i];
+            if (typeof p[0] === "number") pts.push([Number(p[0]), Number(p[1])]);
+            else pts.push([Number(p[0][0]), Number(p[0][1])]);
+        }
+        return pts;
+    }
+
+    function filePixelSize(file, fileExt) {
+        try {
+            if (fileExt === ".png") {
+                var png = readBinaryHead(file, 32);
+                if (png && bAt(png, 0) === 0x89) return { w: u32be(png, 16), h: u32be(png, 20) };
+            }
+            if (fileExt === ".jpg" || fileExt === ".jpeg") {
+                var jpg = readBinaryHead(file, 1024 * 1024);
+                if (!jpg || bAt(jpg, 0) !== 0xFF) return null;
+                var i = 2;
+                var limit = jpg.length;
+                while (i + 9 < limit) {
+                    if (bAt(jpg, i) !== 0xFF) { i += 1; continue; }
+                    var marker = bAt(jpg, i + 1);
+                    if (marker === 0xDA || marker === 0xD9) break;
+                    if (marker === 0x00 || marker === 0xFF) { i += 1; continue; }
+                    if ((marker >= 0xD0 && marker <= 0xD7) || marker === 0x01) { i += 2; continue; }
+                    var len = u16be(jpg, i + 2);
+                    if (len < 2) break;
+                    var sof = (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC);
+                    if (sof) return { w: u16be(jpg, i + 7), h: u16be(jpg, i + 5) };
+                    i += 2 + len;
+                }
+            }
+            if (fileExt === ".psd" || fileExt === ".psb") {
+                var psd = readBinaryHead(file, 26);
+                if (psd && psd.substring(0, 4) === "8BPS") return { h: u32be(psd, 14), w: u32be(psd, 18) };
+            }
+        } catch (ePx) {}
+        return null;
+    }
+
+    // y вниз: atan2(dy, dx) — угол по часовой от оси +x, в градусах.
+    function cwDeg(dx, dy) {
+        return Math.atan2(dy, dx) * 180 / Math.PI;
+    }
+
+    function rotCW(x, y, cx, cy, deg) {
+        var rad = deg * Math.PI / 180;
+        var cos = Math.cos(rad);
+        var sin = Math.sin(rad);
+        var dx = x - cx;
+        var dy = y - cy;
+        return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+    }
+
+    function matrixRot(item) {
+        return item.transformValuesOf(CoordinateSpaces.PARENT_COORDINATES)[0].counterclockwiseRotationAngle;
+    }
+
+    // Углы пути в координатах линейки (как geometricBounds) → пиксели файла.
+    // rotationAngle картинки не используем: он не совпадает с матрицей.
+    function measureCropGeometry(srcFrame, srcImg, srcFile, fileExt) {
+        var log = [];
+        try {
+            log.push("source " + srcFile.fsName);
+            log.push("frame " + srcFrame.name);
+            log.push("frame.rotationAngle " + round3(srcFrame.rotationAngle));
+            log.push("image.rotationAngle " + round3(srcImg.rotationAngle));
+            log.push("image.matrixRotCCW " + round3(matrixRot(srcImg)));
+            var shear = 0;
+            try { shear = Number(srcImg.shearAngle) || 0; } catch (eSh) {}
+            try {
+                var sh2 = srcImg.transformValuesOf(CoordinateSpaces.PARENT_COORDINATES)[0].clockwiseShearAngle;
+                if (Math.abs(sh2) > Math.abs(shear)) shear = sh2;
+            } catch (eSh2) {}
+            log.push("shear " + round3(shear));
+            if (Math.abs(shear) > SHEAR_EPS) {
+                return { ok: false, error: "У изображения задан shear — ImageCroper его не обрабатывает.", log: log };
+            }
+            if (!srcFrame.paths || srcFrame.paths.length < 1) {
+                return { ok: false, error: "У фрейма нет пути.", log: log };
             }
 
-            var fb = f.geometricBounds;
-            var ib = im.geometricBounds;
-            var imgW = ib[3] - ib[1];
-            var imgH = ib[2] - ib[0];
-            var frameW = fb[3] - fb[1];
-            var frameH = fb[2] - fb[0];
-            if (!(imgW > 0.001 && imgH > 0.001 && frameW > 0.001 && frameH > 0.001)) {
-                return { ok: false, error: "Нулевые размеры фрейма или изображения." };
+            var pagePts = pathAnchors(srcFrame);
+            if (pagePts.length < 3) {
+                return { ok: false, error: "В пути фрейма меньше трёх точек.", log: log };
+            }
+            var page = null;
+            try { page = srcFrame.parentPage; } catch (ePg) {}
+            var pageTL = [0, 0];
+            if (page) {
+                pageTL = page.resolve(AnchorPoint.TOP_LEFT_ANCHOR, CoordinateSpaces.SPREAD_COORDINATES, false)[0];
+            } else {
+                log.push("WARN frame has no page, path origin assumed 0,0");
+            }
+            var frameInv = srcFrame.transformValuesOf(CoordinateSpaces.SPREAD_COORDINATES)[0].invertMatrix();
+            var imgInv = srcImg.transformValuesOf(CoordinateSpaces.PARENT_COORDINATES)[0].invertMatrix();
+            var frameInner = [];
+            var imgInner = [];
+            var spreadPts = [];
+            var i;
+            for (i = 0; i < pagePts.length; i++) {
+                var spread = [pagePts[i][0] + pageTL[0], pagePts[i][1] + pageTL[1]];
+                var fin = frameInv.changeCoordinates(spread);
+                var iin = imgInv.changeCoordinates(fin);
+                spreadPts.push(spread);
+                frameInner.push([fin[0], fin[1]]);
+                imgInner.push([iin[0], iin[1]]);
+                log.push("pt " + i + " frameInner " + round3(fin[0]) + "," + round3(fin[1]) +
+                    " imgInner " + round3(iin[0]) + "," + round3(iin[1]));
             }
 
-            var hScale = Number(im.absoluteHorizontalScale);
-            var vScale = Number(im.absoluteVerticalScale);
-            if (isNaN(hScale)) hScale = 100;
-            if (isNaN(vScale)) vScale = 100;
+            var tl = srcImg.resolve(AnchorPoint.TOP_LEFT_ANCHOR, CoordinateSpaces.INNER_COORDINATES, false)[0];
+            var tr = srcImg.resolve(AnchorPoint.TOP_RIGHT_ANCHOR, CoordinateSpaces.INNER_COORDINATES, false)[0];
+            var bl = srcImg.resolve(AnchorPoint.BOTTOM_LEFT_ANCHOR, CoordinateSpaces.INNER_COORDINATES, false)[0];
+            var innerW = tr[0] - tl[0];
+            var innerH = bl[1] - tl[1];
+            if (!(innerW > 0.01 && innerH > 0.01)) {
+                return { ok: false, error: "Нулевой размер изображения.", log: log };
+            }
+            var ppiW = Number(srcImg.actualPpi[0]) || 72;
+            var ppiH = Number(srcImg.actualPpi[1]) || ppiW;
+            var estW = innerW / 72 * ppiW;
+            var estH = innerH / 72 * ppiH;
+            var header = filePixelSize(srcFile, fileExt);
+            var pixelW = header ? header.w : estW;
+            var pixelH = header ? header.h : estH;
+            log.push("innerPt " + round3(innerW) + "x" + round3(innerH));
+            log.push("ppiEstimate " + round3(estW) + "x" + round3(estH));
+            log.push("filePx " + round3(pixelW) + "x" + round3(pixelH) + (header ? " header" : " ppi"));
 
-            var relAngle = Number(im.rotationAngle) || 0;
-            // InDesign: + = против часовой. Photoshop rotateCanvas: + = по часовой.
-            var psRotateDeg = -relAngle;
+            var pxPts = [];
+            for (i = 0; i < imgInner.length; i++) {
+                pxPts.push([
+                    (imgInner[i][0] - tl[0]) / innerW * pixelW,
+                    (imgInner[i][1] - tl[1]) / innerH * pixelH
+                ]);
+                log.push("px " + i + " " + round3(pxPts[i][0]) + "," + round3(pxPts[i][1]));
+            }
+
+            var n = pxPts.length;
+            var topI = 0;
+            var topScore = 1e9;
+            for (i = 0; i < n; i++) {
+                var a = frameInner[i];
+                var b = frameInner[(i + 1) % n];
+                var midY = (a[1] + b[1]) / 2;
+                if (midY < topScore) { topScore = midY; topI = i; }
+            }
+            var iA = topI;
+            var iB = (topI + 1) % n;
+            if (frameInner[iB][0] < frameInner[iA][0]) {
+                var swap = iA; iA = iB; iB = swap;
+            }
+            var sideI = (iA + 1) % n;
+            if (sideI === iB) sideI = (iA + n - 1) % n;
+
+            var wantWpt = dist2(frameInner[iA], frameInner[iB]);
+            var wantHpt = dist2(frameInner[iA], frameInner[sideI]);
+            if (!(wantWpt > 0.5 && wantHpt > 0.5)) {
+                return { ok: false, error: "Нулевая сторона пути.", log: log };
+            }
+
+            var edgeDx = frameInner[iB][0] - frameInner[iA][0];
+            var edgeDy = frameInner[iB][1] - frameInner[iA][1];
+            var placeCCW = -cwDeg(edgeDx, edgeDy);
+            var pixDx = pxPts[iB][0] - pxPts[iA][0];
+            var pixDy = pxPts[iB][1] - pxPts[iA][1];
+            var psRotateDeg = -cwDeg(pixDx, pixDy);
             if (almostZero(psRotateDeg, ANGLE_EPS)) psRotateDeg = 0;
+            if (almostZero(placeCCW, ANGLE_EPS)) placeCCW = 0;
+
+            var notRect = false;
+            for (i = 0; i < n; i++) {
+                var p0 = frameInner[i];
+                var p1 = frameInner[(i + 1) % n];
+                var p2 = frameInner[(i + 2) % n];
+                var d1x = p1[0] - p0[0];
+                var d1y = p1[1] - p0[1];
+                var d2x = p2[0] - p1[0];
+                var d2y = p2[1] - p1[1];
+                var l1 = Math.sqrt(d1x * d1x + d1y * d1y);
+                var l2 = Math.sqrt(d2x * d2x + d2y * d2y);
+                if (l1 < 0.01 || l2 < 0.01) continue;
+                var cosA = (d1x * d2x + d1y * d2y) / (l1 * l2);
+                if (Math.abs(cosA) > 0.05) notRect = true;
+            }
+
+            var cx = pixelW / 2;
+            var cy = pixelH / 2;
+            var corners = [[0, 0], [pixelW, 0], [pixelW, pixelH], [0, pixelH]];
+            var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+            var cminX = 1e9, cminY = 1e9, cmaxX = -1e9, cmaxY = -1e9;
+            for (i = 0; i < 4; i++) {
+                var rc = rotCW(corners[i][0], corners[i][1], cx, cy, psRotateDeg);
+                if (rc[0] < minX) minX = rc[0];
+                if (rc[1] < minY) minY = rc[1];
+                if (rc[0] > maxX) maxX = rc[0];
+                if (rc[1] > maxY) maxY = rc[1];
+            }
+            for (i = 0; i < pxPts.length; i++) {
+                var rp = rotCW(pxPts[i][0], pxPts[i][1], cx, cy, psRotateDeg);
+                if (rp[0] < cminX) cminX = rp[0];
+                if (rp[1] < cminY) cminY = rp[1];
+                if (rp[0] > cmaxX) cmaxX = rp[0];
+                if (rp[1] > cmaxY) cmaxY = rp[1];
+            }
+            var cropLeft = cminX - minX;
+            var cropTop = cminY - minY;
+            var cropRight = cmaxX - minX;
+            var cropBottom = cmaxY - minY;
+            log.push("topEdge " + iA + "->" + iB + " side " + sideI);
+            log.push("wantPt " + round3(wantWpt) + "x" + round3(wantHpt));
+            log.push("placeCCW " + round3(placeCCW));
+            log.push("psRotate " + round3(psRotateDeg));
+            log.push("predCanvas " + round3(maxX - minX) + "x" + round3(maxY - minY));
+            log.push("cropPx " + round3(cropLeft) + "," + round3(cropTop) + " " + round3(cropRight) + "," + round3(cropBottom));
+
+            var scx = 0, scy = 0;
+            for (i = 0; i < spreadPts.length; i++) {
+                scx += spreadPts[i][0];
+                scy += spreadPts[i][1];
+            }
+            scx /= spreadPts.length;
+            scy /= spreadPts.length;
+
+            var warning = "";
+            if (notRect || n !== 4) {
+                warning = "Путь фрейма не прямоугольник. Кроп — прямоугольник по верхней стороне, углы пути обрежутся этим прямоугольником.";
+            }
 
             return {
                 ok: true,
-                cropL: (fb[1] - ib[1]) / imgW,
-                cropT: (fb[0] - ib[0]) / imgH,
-                cropR: (fb[3] - ib[1]) / imgW,
-                cropB: (fb[2] - ib[0]) / imgH,
-                frameWmm: frameW,
-                frameHmm: frameH,
+                log: log,
+                warning: warning,
+                cropLeft: cropLeft,
+                cropTop: cropTop,
+                cropRight: cropRight,
+                cropBottom: cropBottom,
+                predW: maxX - minX,
+                predH: maxY - minY,
                 psRotateDeg: psRotateDeg,
-                flipH: hScale < 0 ? 1 : 0,
-                flipV: vScale < 0 ? 1 : 0
+                placeCCW: placeCCW,
+                wantWpt: wantWpt,
+                wantHpt: wantHpt,
+                topA: frameInner[iA],
+                topB: frameInner[iB],
+                side: frameInner[sideI],
+                spreadCenter: [scx, scy]
             };
         } catch (eMeas) {
-            return { ok: false, error: "Не удалось снять геометрию кропа: " + eMeas.message };
-        } finally {
-            if (dup) {
-                try { dup.remove(); } catch (eRm) {}
-            }
+            log.push("ERROR " + eMeas.message);
+            return { ok: false, error: "Не удалось снять геометрию кропа: " + eMeas.message, log: log };
         }
+    }
+
+    function placeImageOnPath(img, geom) {
+        var cur = matrixRot(img);
+        var delta = geom.placeCCW - cur;
+        while (delta > 180) delta -= 360;
+        while (delta < -180) delta += 360;
+        if (Math.abs(delta) > ANGLE_EPS) {
+            img.transform(
+                CoordinateSpaces.PARENT_COORDINATES,
+                AnchorPoint.CENTER_ANCHOR,
+                app.transformationMatrices.add({ counterclockwiseRotationAngle: delta })
+            );
+        }
+        var tl = img.resolve(AnchorPoint.TOP_LEFT_ANCHOR, CoordinateSpaces.PARENT_COORDINATES, false)[0];
+        var tr = img.resolve(AnchorPoint.TOP_RIGHT_ANCHOR, CoordinateSpaces.PARENT_COORDINATES, false)[0];
+        var bl = img.resolve(AnchorPoint.BOTTOM_LEFT_ANCHOR, CoordinateSpaces.PARENT_COORDINATES, false)[0];
+        var curW = dist2(tl, tr);
+        var curH = dist2(tl, bl);
+        if (curW > 0.01) {
+            img.horizontalScale = Math.abs(Number(img.horizontalScale) || 100) * (geom.wantWpt / curW);
+        }
+        if (curH > 0.01) {
+            img.verticalScale = Math.abs(Number(img.verticalScale) || 100) * (geom.wantHpt / curH);
+        }
+        tl = img.resolve(AnchorPoint.TOP_LEFT_ANCHOR, CoordinateSpaces.SPREAD_COORDINATES, false)[0];
+        tr = img.resolve(AnchorPoint.TOP_RIGHT_ANCHOR, CoordinateSpaces.SPREAD_COORDINATES, false)[0];
+        var br = img.resolve(AnchorPoint.BOTTOM_RIGHT_ANCHOR, CoordinateSpaces.SPREAD_COORDINATES, false)[0];
+        bl = img.resolve(AnchorPoint.BOTTOM_LEFT_ANCHOR, CoordinateSpaces.SPREAD_COORDINATES, false)[0];
+        var icx = (tl[0] + tr[0] + br[0] + bl[0]) / 4;
+        var icy = (tl[1] + tr[1] + br[1] + bl[1]) / 4;
+        img.move(undefined, [geom.spreadCenter[0] - icx, geom.spreadCenter[1] - icy]);
     }
 
     function jsString(s) {
@@ -494,13 +794,13 @@
             "app.preferences.rulerUnits = Units.PIXELS;\n" +
             "var src = new File(\"" + jsString(p.srcURI) + "\");\n" +
             "var dst = new File(\"" + jsString(p.dstURI) + "\");\n" +
-            "var cropL = " + num(p.cropL) + ";\n" +
-            "var cropT = " + num(p.cropT) + ";\n" +
-            "var cropR = " + num(p.cropR) + ";\n" +
-            "var cropB = " + num(p.cropB) + ";\n" +
             "var rotDeg = " + num(p.rotDeg) + ";\n" +
-            "var flipH = " + num(p.flipH) + ";\n" +
-            "var flipV = " + num(p.flipV) + ";\n" +
+            "var cropLeft = " + num(p.cropLeft) + ";\n" +
+            "var cropTop = " + num(p.cropTop) + ";\n" +
+            "var cropRight = " + num(p.cropRight) + ";\n" +
+            "var cropBottom = " + num(p.cropBottom) + ";\n" +
+            "var predW = " + num(p.predW) + ";\n" +
+            "var predH = " + num(p.predH) + ";\n" +
             "var targetW = " + num(p.targetW) + ";\n" +
             "var targetH = " + num(p.targetH) + ";\n" +
             "var dpi = " + num(p.dpi) + ";\n" +
@@ -617,15 +917,15 @@
             "      }\n" +
             "    } catch (eBg) {}\n" +
             "  }\n" +
-            "  if (flipH) work.flipCanvas(Direction.HORIZONTAL);\n" +
-            "  if (flipV) work.flipCanvas(Direction.VERTICAL);\n" +
             "  if (Math.abs(rotDeg) > 0.05) work.rotateCanvas(rotDeg);\n" +
+            "  var sx = predW > 1 ? px(work.width) / predW : 1;\n" +
+            "  var sy = predH > 1 ? px(work.height) / predH : 1;\n" +
             "  var w = px(work.width);\n" +
             "  var h = px(work.height);\n" +
-            "  var left = cropL * w;\n" +
-            "  var top = cropT * h;\n" +
-            "  var right = cropR * w;\n" +
-            "  var bottom = cropB * h;\n" +
+            "  var left = cropLeft * sx;\n" +
+            "  var top = cropTop * sy;\n" +
+            "  var right = cropRight * sx;\n" +
+            "  var bottom = cropBottom * sy;\n" +
             "  var addL = left < 0 ? -left : 0;\n" +
             "  var addT = top < 0 ? -top : 0;\n" +
             "  var addR = right > w ? right - w : 0;\n" +
@@ -643,7 +943,10 @@
             "  var cw = px(work.width);\n" +
             "  var ch = px(work.height);\n" +
             "  if (cw > targetW * 1.02 || ch > targetH * 1.02) {\n" +
-            "    work.resizeImage(targetW, targetH, dpi, ResampleMethod.BICUBIC);\n" +
+            "    var rs = Math.min(targetW / cw, targetH / ch);\n" +
+            "    var ow = Math.max(1, Math.round(cw * rs));\n" +
+            "    var oh = Math.max(1, Math.round(ch * rs));\n" +
+            "    work.resizeImage(ow, oh, dpi, ResampleMethod.BICUBIC);\n" +
             "  } else {\n" +
             "    try { work.resizeImage(undefined, undefined, dpi, ResampleMethod.NONE); } catch (eDpi) {}\n" +
             "  }\n" +
@@ -676,7 +979,7 @@
             "  } else {\n" +
             "    savePngFile(dst, embed);\n" +
             "  }\n" +
-            "  return 'OK';\n" +
+            "  return 'OK sx=' + sx + ' sy=' + sy + ' canvas=' + w + 'x' + h;\n" +
             "} catch (e) {\n" +
             "  return 'ERR:' + e.message;\n" +
             "} finally {\n" +
