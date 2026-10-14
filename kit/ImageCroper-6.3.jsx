@@ -120,7 +120,7 @@
         if (!geom.ok) {
             logLines.push("ERROR " + geom.error);
             writeTextLog(logFile, logLines);
-            showMessage("Ошибка", geom.error + "\n\nЛог:\n" + logFile.fsName);
+            showMessage("Ошибка", geom.error);
             return;
         }
 
@@ -138,14 +138,10 @@
         logLines.push("targetPx " + targetW + "x" + targetH);
         logLines.push("dest " + destFile.fsName);
 
-        var warn = "";
         if (effective < targetDpi) {
-            warn = "\n\nРазрешение исходника (" + Math.round(effective) +
-                " ppi) ниже требуемого (" + targetDpi + " ppi). Не растягивал.";
             logLines.push("WARN source ppi below target, did not upscale");
         }
         if (geom.warning) {
-            warn += "\n\n" + geom.warning;
             logLines.push("WARN " + geom.warning);
         }
 
@@ -169,7 +165,7 @@
         logLines.push("photoshop " + psResult);
         if (psResult.indexOf("OK") !== 0) {
             writeTextLog(logFile, logLines);
-            showMessage("Ошибка", photoshopErrorText(psResult) + "\n\nЛог:\n" + logFile.fsName);
+            showMessage("Ошибка", photoshopErrorText(psResult));
             return;
         }
 
@@ -201,11 +197,7 @@
         }
 
         writeTextLog(logFile, logLines);
-        showMessage(
-            "Готово",
-            "ImageCroper " + SCRIPT_VERSION + "\n" + destFile.name + warn +
-                "\n\nЛог:\n" + logFile.fsName
-        );
+        showMessage("\u0412\u0441\u0435 \u043e\u043a", "");
     } catch (e) {
         try {
             logLines.push("ERROR " + String(e.message || e));
@@ -1037,9 +1029,10 @@
         var w = new Window("dialog", title);
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
-        var lines = String(txt).split("\n");
+        var lines = String(txt || "").split("\n");
         var i;
         for (i = 0; i < lines.length; i++) {
+            if (!lines[i]) continue;
             w.add("statictext", undefined, lines[i]);
         }
         w.add("button", undefined, "OK", { name: "ok" });
