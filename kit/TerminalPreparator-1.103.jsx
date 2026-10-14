@@ -213,7 +213,7 @@ var bleedWarning = !hasBleed && !isWebDocument && !isPixelDocument(doc) &&
     !layoutSkipsBleedCheck(collectDocNameHaystack(doc));
 
 // Функция для определения минимального PPI по площади в мм²
-// A4 = 210×297 = 62370 → 300; билборд 4×3 м (1:10) = 400×300 = 120000 → 256
+// A4 = 210×297 = 62370 → 300; A3 = 297×420 = 124740 → 256
 function getMinPPI(area) {
     if (area <= 62370) return 300;
     if (area <= 124740) return 256;
@@ -221,6 +221,17 @@ function getMinPPI(area) {
     if (area <= 499554) return 129;
     if (area <= 999949) return 92;
     return 65; // для площадей больше 999949
+}
+
+// 4×3 м в 1:10 — ровно 400×300 мм. По площади это 256, как A3, а на щите тот же ~180, что у 6×3.
+// Только этот размер (±1 мм, любая ориентация). A3 297×420 и прочие площади не трогаем.
+function ppiForPageMm(widthMm, heightMm) {
+    var w = Number(widthMm);
+    var h = Number(heightMm);
+    var shortSide = Math.min(w, h);
+    var longSide = Math.max(w, h);
+    if (w > 0 && h > 0 && Math.abs(shortSide - 300) <= 1 && Math.abs(longSide - 400) <= 1) return 182;
+    return getMinPPI(Math.round(w * h));
 }
 
 function measurementToMm(value, unit) {
@@ -1051,7 +1062,7 @@ var hasFileSizeWarning = false;
 var pageWidthMm = Math.round(measurementToMm(doc.documentPreferences.pageWidth, doc.viewPreferences.horizontalMeasurementUnits) * 10) / 10;
 var pageHeightMm = Math.round(measurementToMm(doc.documentPreferences.pageHeight, doc.viewPreferences.verticalMeasurementUnits) * 10) / 10;
 var docArea = Math.round(pageWidthMm * pageHeightMm);
-var requiredPPI = isWebPixelDocument ? SCREEN_REQUIRED_PPI : getMinPPI(docArea);
+var requiredPPI = isWebPixelDocument ? SCREEN_REQUIRED_PPI : ppiForPageMm(pageWidthMm, pageHeightMm);
 
 function formatFileSizeMb(mb) {
     var n = Math.round(Number(mb) * 10) / 10;

@@ -26,7 +26,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.3";
+    var SCRIPT_VERSION = "6.4";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -99,15 +99,20 @@
     try {
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.MILLIMETERS;
         doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.MILLIMETERS;
-        var pageArea = Math.round(
-            doc.documentPreferences.pageWidth * doc.documentPreferences.pageHeight
-        );
+        var pageWidthMm = doc.documentPreferences.pageWidth;
+        var pageHeightMm = doc.documentPreferences.pageHeight;
+        var pageArea = Math.round(pageWidthMm * pageHeightMm);
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.POINTS;
         doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.POINTS;
         app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
         app.scriptPreferences.enableRedraw = false;
 
         var targetDpi = getMinPPI(pageArea);
+        var shortSide = Math.min(pageWidthMm, pageHeightMm);
+        var longSide = Math.max(pageWidthMm, pageHeightMm);
+        if (pageWidthMm > 0 && pageHeightMm > 0 && Math.abs(shortSide - 300) <= 1 && Math.abs(longSide - 400) <= 1) {
+            targetDpi = 182;
+        }
         var effective = Math.min(img.effectivePpi[0], img.effectivePpi[1]);
         var finalDpi = effective < targetDpi ? Math.round(effective) : targetDpi;
         if (!(finalDpi > 0)) finalDpi = targetDpi;

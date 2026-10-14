@@ -1,14 +1,14 @@
 {
-    "updatedAt":  "2026-10-14T20:16:57Z",
+    "updatedAt":  "2026-10-14T20:53:27Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "technicalFolder":  "zzz Technical",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
-                      "name":  "TerminalPreparator-1.102.jsx",
-                      "version":  "1.102",
-                      "sha256":  "5971b5b0edf772ec0e0446eb00d11e535dc0289bab1bb60b90231ff6e13a7ac9"
+                      "name":  "TerminalPreparator-1.103.jsx",
+                      "version":  "1.103",
+                      "sha256":  "05939972ff3f4726c6d2ea27268734bb3c64f7a1faec999d5caa1ee965d1ed89"
                   },
                   {
                       "id":  "LegalParagraphSetup",
@@ -18,9 +18,9 @@
                   },
                   {
                       "id":  "ImageCroper",
-                      "name":  "ImageCroper-6.3.jsx",
-                      "version":  "6.3",
-                      "sha256":  "d574a9f17982fdd948fa59d6c5de2b57f8d52845523d18033d0ea5ac03062d84"
+                      "name":  "ImageCroper-6.4.jsx",
+                      "version":  "6.4",
+                      "sha256":  "8f92deb19650e89087967ce05e1f7f041daf3c6cb660611aec0ea4fd7a428110"
                   },
                   {
                       "id":  "Syncer",
