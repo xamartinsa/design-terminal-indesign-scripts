@@ -1992,8 +1992,8 @@ function createFireworksSim(cols, rows) {
         rockets.push({
             x: fwRnd(5, cols - 6),
             y: rows - 1,
-            vy: fwRnd(-1.2, -0.92),
-            peak: fwRnd(1, Math.max(4, rows * 0.52))
+            vy: fwRnd(-2.6, -1.9),
+            peak: fwRnd(Math.max(3, rows * 0.32), Math.max(7, rows * 0.58))
         });
     }
 
@@ -2066,14 +2066,14 @@ function createFireworksSim(cols, rows) {
         var i, r, s, t, ch, priVal;
         tick++;
         if (cooldown > 0) cooldown--;
-        if (cooldown <= 0 && rockets.length === 0 && sparks.length < 3) {
-            if (launched >= 5) {
+        if (cooldown <= 0 && rockets.length < 2) {
+            if (launched >= 8) {
                 launched = 0;
-                cooldown = 22;
+                cooldown = 6;
             } else {
                 spawnRocket();
                 launched++;
-                cooldown = 18;
+                cooldown = 3;
             }
         }
 
@@ -2084,7 +2084,6 @@ function createFireworksSim(cols, rows) {
             if (r.y <= r.peak) {
                 explode(r.x, r.y);
                 rockets.splice(i, 1);
-                cooldown = 16;
             }
         }
 
