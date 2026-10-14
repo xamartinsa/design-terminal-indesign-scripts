@@ -1977,6 +1977,7 @@ function createFireworksSim(cols, rows) {
     var tick = 0;
     var cooldown = 0;
     var launched = 0;
+    var fastFirst = true;
     var cellN = cols * rows;
     var cells = [];
     var prio = [];
@@ -1989,11 +1990,16 @@ function createFireworksSim(cols, rows) {
     }
 
     function spawnRocket() {
+        var vy = fwRnd(-1.2, -0.92);
+        if (fastFirst) {
+            vy = -3.4;
+            fastFirst = false;
+        }
         rockets.push({
             x: fwRnd(5, cols - 6),
             y: rows - 1,
-            vy: fwRnd(-2.6, -1.9),
-            peak: fwRnd(Math.max(3, rows * 0.32), Math.max(7, rows * 0.58))
+            vy: vy,
+            peak: fwRnd(1, Math.max(4, rows * 0.52))
         });
     }
 
@@ -2066,14 +2072,14 @@ function createFireworksSim(cols, rows) {
         var i, r, s, t, ch, priVal;
         tick++;
         if (cooldown > 0) cooldown--;
-        if (cooldown <= 0 && rockets.length < 2) {
-            if (launched >= 8) {
+        if (cooldown <= 0 && rockets.length === 0 && sparks.length < 3) {
+            if (launched >= 5) {
                 launched = 0;
-                cooldown = 6;
+                cooldown = 22;
             } else {
                 spawnRocket();
                 launched++;
-                cooldown = 3;
+                cooldown = 18;
             }
         }
 
@@ -2084,6 +2090,7 @@ function createFireworksSim(cols, rows) {
             if (r.y <= r.peak) {
                 explode(r.x, r.y);
                 rockets.splice(i, 1);
+                cooldown = 16;
             }
         }
 
@@ -2145,6 +2152,9 @@ function showAllOkDanceDialog(reportText, logText) {
     var fwCols = Math.max(46, Math.floor(boxW / 5));
     var fwRows = Math.max(18, Math.floor(dancerH / 12));
     var sim = createFireworksSim(fwCols, fwRows);
+    var fwFrame = "";
+    var fwWarm;
+    for (fwWarm = 0; fwWarm < 2; fwWarm++) fwFrame = sim.step();
 
     var w = new Window("palette", "Terminal Preparator");
     w.orientation = "column";
@@ -2163,7 +2173,7 @@ function showAllOkDanceDialog(reportText, logText) {
     et.preferredSize = [boxW, 22];
     et.alignment = ["fill", "top"];
 
-    var dancer = okParent.add("statictext", undefined, sim.step(), {multiline: true});
+    var dancer = okParent.add("statictext", undefined, fwFrame, {multiline: true});
     dancer.preferredSize = [boxW, dancerH];
     dancer.alignment = ["fill", "top"];
     setMonoFont(dancer, 8);
@@ -2187,13 +2197,18 @@ function showAllOkDanceDialog(reportText, logText) {
 
     var task = app.idleTasks.add({
         name: "TerminalPreparatorDance",
-        sleep: 20
+        sleep: 1
     });
+    var fwPaceSet = false;
     task.addEventListener("onIdle", function () {
         try {
             if (!w.visible) {
                 stopPrepDance();
                 return;
+            }
+            if (!fwPaceSet) {
+                fwPaceSet = true;
+                task.sleep = 20;
             }
             dancer.text = sim.step();
         } catch (eTick) {
