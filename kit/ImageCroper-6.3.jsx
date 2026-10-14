@@ -525,6 +525,91 @@
         return item.transformValuesOf(CoordinateSpaces.PARENT_COORDINATES)[0].counterclockwiseRotationAngle;
     }
 
+    // frameInner и pxPts — одни и те же углы пути, в пунктах фрейма и в пикселях файла.
+    // Угол из панели сюда не передаётся.
+    function planCropWindow(frameInner, pxPts, pixelW, pixelH) {
+        var n = pxPts.length;
+        var topI = 0;
+        var topScore = 1e9;
+        var i;
+        for (i = 0; i < n; i++) {
+            var a = frameInner[i];
+            var b = frameInner[(i + 1) % n];
+            var midY = (a[1] + b[1]) / 2;
+            if (midY < topScore) { topScore = midY; topI = i; }
+        }
+        var iA = topI;
+        var iB = (topI + 1) % n;
+        if (frameInner[iB][0] < frameInner[iA][0]) {
+            var swap = iA; iA = iB; iB = swap;
+        }
+        var sideI = (iA + 1) % n;
+        if (sideI === iB) sideI = (iA + n - 1) % n;
+
+        var wantWpt = dist2(frameInner[iA], frameInner[iB]);
+        var wantHpt = dist2(frameInner[iA], frameInner[sideI]);
+        var edgeDx = frameInner[iB][0] - frameInner[iA][0];
+        var edgeDy = frameInner[iB][1] - frameInner[iA][1];
+        var placeCCW = -cwDeg(edgeDx, edgeDy);
+        var pixDx = pxPts[iB][0] - pxPts[iA][0];
+        var pixDy = pxPts[iB][1] - pxPts[iA][1];
+        var psRotateDeg = -cwDeg(pixDx, pixDy);
+        if (almostZero(psRotateDeg, ANGLE_EPS)) psRotateDeg = 0;
+        if (almostZero(placeCCW, ANGLE_EPS)) placeCCW = 0;
+
+        var notRect = false;
+        for (i = 0; i < n; i++) {
+            var p0 = frameInner[i];
+            var p1 = frameInner[(i + 1) % n];
+            var p2 = frameInner[(i + 2) % n];
+            var d1x = p1[0] - p0[0];
+            var d1y = p1[1] - p0[1];
+            var d2x = p2[0] - p1[0];
+            var d2y = p2[1] - p1[1];
+            var l1 = Math.sqrt(d1x * d1x + d1y * d1y);
+            var l2 = Math.sqrt(d2x * d2x + d2y * d2y);
+            if (l1 < 0.01 || l2 < 0.01) continue;
+            var cosA = (d1x * d2x + d1y * d2y) / (l1 * l2);
+            if (Math.abs(cosA) > 0.05) notRect = true;
+        }
+
+        var cx = pixelW / 2;
+        var cy = pixelH / 2;
+        var corners = [[0, 0], [pixelW, 0], [pixelW, pixelH], [0, pixelH]];
+        var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+        var cminX = 1e9, cminY = 1e9, cmaxX = -1e9, cmaxY = -1e9;
+        for (i = 0; i < 4; i++) {
+            var rc = rotCW(corners[i][0], corners[i][1], cx, cy, psRotateDeg);
+            if (rc[0] < minX) minX = rc[0];
+            if (rc[1] < minY) minY = rc[1];
+            if (rc[0] > maxX) maxX = rc[0];
+            if (rc[1] > maxY) maxY = rc[1];
+        }
+        for (i = 0; i < pxPts.length; i++) {
+            var rp = rotCW(pxPts[i][0], pxPts[i][1], cx, cy, psRotateDeg);
+            if (rp[0] < cminX) cminX = rp[0];
+            if (rp[1] < cminY) cminY = rp[1];
+            if (rp[0] > cmaxX) cmaxX = rp[0];
+            if (rp[1] > cmaxY) cmaxY = rp[1];
+        }
+        return {
+            iA: iA,
+            iB: iB,
+            sideI: sideI,
+            wantWpt: wantWpt,
+            wantHpt: wantHpt,
+            placeCCW: placeCCW,
+            psRotateDeg: psRotateDeg,
+            notRect: notRect || n !== 4,
+            cropLeft: cminX - minX,
+            cropTop: cminY - minY,
+            cropRight: cmaxX - minX,
+            cropBottom: cmaxY - minY,
+            predW: maxX - minX,
+            predH: maxY - minY
+        };
+    }
+
     // Углы пути в координатах линейки (как geometricBounds) → пиксели файла.
     // rotationAngle картинки не используем: он не совпадает с матрицей.
     function measureCropGeometry(srcFrame, srcImg, srcFile, fileExt) {
@@ -606,83 +691,17 @@
                 log.push("px " + i + " " + round3(pxPts[i][0]) + "," + round3(pxPts[i][1]));
             }
 
-            var n = pxPts.length;
-            var topI = 0;
-            var topScore = 1e9;
-            for (i = 0; i < n; i++) {
-                var a = frameInner[i];
-                var b = frameInner[(i + 1) % n];
-                var midY = (a[1] + b[1]) / 2;
-                if (midY < topScore) { topScore = midY; topI = i; }
-            }
-            var iA = topI;
-            var iB = (topI + 1) % n;
-            if (frameInner[iB][0] < frameInner[iA][0]) {
-                var swap = iA; iA = iB; iB = swap;
-            }
-            var sideI = (iA + 1) % n;
-            if (sideI === iB) sideI = (iA + n - 1) % n;
-
-            var wantWpt = dist2(frameInner[iA], frameInner[iB]);
-            var wantHpt = dist2(frameInner[iA], frameInner[sideI]);
-            if (!(wantWpt > 0.5 && wantHpt > 0.5)) {
+            var plan = planCropWindow(frameInner, pxPts, pixelW, pixelH);
+            if (!(plan.wantWpt > 0.5 && plan.wantHpt > 0.5)) {
                 return { ok: false, error: "Нулевая сторона пути.", log: log };
             }
-
-            var edgeDx = frameInner[iB][0] - frameInner[iA][0];
-            var edgeDy = frameInner[iB][1] - frameInner[iA][1];
-            var placeCCW = -cwDeg(edgeDx, edgeDy);
-            var pixDx = pxPts[iB][0] - pxPts[iA][0];
-            var pixDy = pxPts[iB][1] - pxPts[iA][1];
-            var psRotateDeg = -cwDeg(pixDx, pixDy);
-            if (almostZero(psRotateDeg, ANGLE_EPS)) psRotateDeg = 0;
-            if (almostZero(placeCCW, ANGLE_EPS)) placeCCW = 0;
-
-            var notRect = false;
-            for (i = 0; i < n; i++) {
-                var p0 = frameInner[i];
-                var p1 = frameInner[(i + 1) % n];
-                var p2 = frameInner[(i + 2) % n];
-                var d1x = p1[0] - p0[0];
-                var d1y = p1[1] - p0[1];
-                var d2x = p2[0] - p1[0];
-                var d2y = p2[1] - p1[1];
-                var l1 = Math.sqrt(d1x * d1x + d1y * d1y);
-                var l2 = Math.sqrt(d2x * d2x + d2y * d2y);
-                if (l1 < 0.01 || l2 < 0.01) continue;
-                var cosA = (d1x * d2x + d1y * d2y) / (l1 * l2);
-                if (Math.abs(cosA) > 0.05) notRect = true;
-            }
-
-            var cx = pixelW / 2;
-            var cy = pixelH / 2;
-            var corners = [[0, 0], [pixelW, 0], [pixelW, pixelH], [0, pixelH]];
-            var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-            var cminX = 1e9, cminY = 1e9, cmaxX = -1e9, cmaxY = -1e9;
-            for (i = 0; i < 4; i++) {
-                var rc = rotCW(corners[i][0], corners[i][1], cx, cy, psRotateDeg);
-                if (rc[0] < minX) minX = rc[0];
-                if (rc[1] < minY) minY = rc[1];
-                if (rc[0] > maxX) maxX = rc[0];
-                if (rc[1] > maxY) maxY = rc[1];
-            }
-            for (i = 0; i < pxPts.length; i++) {
-                var rp = rotCW(pxPts[i][0], pxPts[i][1], cx, cy, psRotateDeg);
-                if (rp[0] < cminX) cminX = rp[0];
-                if (rp[1] < cminY) cminY = rp[1];
-                if (rp[0] > cmaxX) cmaxX = rp[0];
-                if (rp[1] > cmaxY) cmaxY = rp[1];
-            }
-            var cropLeft = cminX - minX;
-            var cropTop = cminY - minY;
-            var cropRight = cmaxX - minX;
-            var cropBottom = cmaxY - minY;
-            log.push("topEdge " + iA + "->" + iB + " side " + sideI);
-            log.push("wantPt " + round3(wantWpt) + "x" + round3(wantHpt));
-            log.push("placeCCW " + round3(placeCCW));
-            log.push("psRotate " + round3(psRotateDeg));
-            log.push("predCanvas " + round3(maxX - minX) + "x" + round3(maxY - minY));
-            log.push("cropPx " + round3(cropLeft) + "," + round3(cropTop) + " " + round3(cropRight) + "," + round3(cropBottom));
+            log.push("topEdge " + plan.iA + "->" + plan.iB + " side " + plan.sideI);
+            log.push("wantPt " + round3(plan.wantWpt) + "x" + round3(plan.wantHpt));
+            log.push("placeCCW " + round3(plan.placeCCW));
+            log.push("psRotate " + round3(plan.psRotateDeg));
+            log.push("predCanvas " + round3(plan.predW) + "x" + round3(plan.predH));
+            log.push("cropPx " + round3(plan.cropLeft) + "," + round3(plan.cropTop) + " " +
+                round3(plan.cropRight) + "," + round3(plan.cropBottom));
 
             var scx = 0, scy = 0;
             for (i = 0; i < spreadPts.length; i++) {
@@ -693,7 +712,7 @@
             scy /= spreadPts.length;
 
             var warning = "";
-            if (notRect || n !== 4) {
+            if (plan.notRect) {
                 warning = "Путь фрейма не прямоугольник. Кроп — прямоугольник по верхней стороне, углы пути обрежутся этим прямоугольником.";
             }
 
@@ -701,19 +720,19 @@
                 ok: true,
                 log: log,
                 warning: warning,
-                cropLeft: cropLeft,
-                cropTop: cropTop,
-                cropRight: cropRight,
-                cropBottom: cropBottom,
-                predW: maxX - minX,
-                predH: maxY - minY,
-                psRotateDeg: psRotateDeg,
-                placeCCW: placeCCW,
-                wantWpt: wantWpt,
-                wantHpt: wantHpt,
-                topA: frameInner[iA],
-                topB: frameInner[iB],
-                side: frameInner[sideI],
+                cropLeft: plan.cropLeft,
+                cropTop: plan.cropTop,
+                cropRight: plan.cropRight,
+                cropBottom: plan.cropBottom,
+                predW: plan.predW,
+                predH: plan.predH,
+                psRotateDeg: plan.psRotateDeg,
+                placeCCW: plan.placeCCW,
+                wantWpt: plan.wantWpt,
+                wantHpt: plan.wantHpt,
+                topA: frameInner[plan.iA],
+                topB: frameInner[plan.iB],
+                side: frameInner[plan.sideI],
                 spreadCenter: [scx, scy]
             };
         } catch (eMeas) {
