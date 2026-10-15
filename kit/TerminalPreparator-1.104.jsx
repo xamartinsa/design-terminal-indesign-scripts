@@ -87,6 +87,143 @@ function isFigmaReferenceOverlayLink(link) {
     return false;
 }
 
+// 1.104: как Syncer, но только отчёт. Мусор ОС и кэш шрифтов не считаем.
+function shouldSkipPackageCleanup(name) {
+    var n = String(name || "");
+    if (n === ".DS_Store" || n === "Thumbs.db" || n === "desktop.ini") return true;
+    if (n.indexOf("._") === 0) return true;
+    if (n.indexOf("AdobeFnt") === 0) return true;
+    return false;
+}
+
+function decodeFsName(name) {
+    var n = String(name || "");
+    try {
+        return decodeURI(n);
+    } catch (eDec) {
+        return n;
+    }
+}
+
+function unusedNamesInFolder(fileNames, usedLower) {
+    var unused = [];
+    var i;
+    var used = usedLower || {};
+    for (i = 0; i < fileNames.length; i++) {
+        var name = String(fileNames[i] || "");
+        try {
+            name = decodeURI(name);
+        } catch (eDecName) {}
+        if (!name || shouldSkipPackageCleanup(name)) continue;
+        if (used[name.toLowerCase()]) continue;
+        unused.push(name);
+    }
+    return unused;
+}
+
+function formatUnusedFolderReport(folderLabel, names, maxExamples) {
+    if (!names || names.length === 0) return "";
+    if (!maxExamples) maxExamples = 12;
+    var lines = [];
+    var shown = Math.min(maxExamples, names.length);
+    var i;
+    lines.push("⚠ В папке " + folderLabel + " есть файлы, которые макет не использует:");
+    for (i = 0; i < shown; i++) {
+        lines.push("   • " + names[i]);
+    }
+    if (names.length > shown) {
+        lines.push("   … и ещё " + (names.length - shown));
+    }
+    return lines.join("\n") + "\n\n";
+}
+
+function formatFigmaReferenceLeftoverReport(layerNames, linkNames) {
+    var layers = layerNames || [];
+    var links = linkNames || [];
+    if (layers.length === 0 && links.length === 0) return "";
+    var lines = [];
+    var i;
+    lines.push("⚠ В макете остались референс-картинки FigmaToIndd. Перед заливкой в Терминал их надо убрать.");
+    for (i = 0; i < layers.length; i++) {
+        lines.push("   • слой " + layers[i]);
+    }
+    for (i = 0; i < links.length; i++) {
+        lines.push("   • " + links[i]);
+    }
+    return lines.join("\n") + "\n\n";
+}
+
+function listFolderFileNames(folderPath) {
+    var names = [];
+    var folder;
+    var files;
+    var i;
+    try {
+        folder = new Folder(folderPath);
+        if (!folder.exists) return names;
+        files = folder.getFiles();
+        for (i = 0; i < files.length; i++) {
+            if (files[i] instanceof File) names.push(files[i].name);
+        }
+    } catch (eList) {}
+    return names;
+}
+
+function preparatorFontFile(font) {
+    var loc;
+    var f;
+    try {
+        loc = font.location;
+    } catch (eLoc) {
+        return null;
+    }
+    if (loc == null) return null;
+    try {
+        if (loc === NothingEnum.NOTHING) return null;
+    } catch (eNothing) {}
+    try {
+        if (loc instanceof File) f = loc;
+        else f = new File(String(loc));
+    } catch (eFile) {
+        return null;
+    }
+    try {
+        if (f.exists) return f;
+    } catch (eExists) {}
+    return null;
+}
+
+function preparatorFontPathIsCloud(path) {
+    var p = "";
+    try {
+        p = normalizePath(path).toLowerCase();
+    } catch (eNorm) {
+        p = String(path || "").replace(/\\/g, "/").toLowerCase();
+    }
+    return p.indexOf("/coresync/") >= 0 ||
+        p.indexOf("/livetype/") >= 0 ||
+        p.indexOf("/adobe fonts/") >= 0 ||
+        p.indexOf("/adobefonts/") >= 0 ||
+        p.indexOf("/typekit/") >= 0;
+}
+
+function preparatorFontIsMissing(font) {
+    try {
+        return font.status === FontStatus.SUBSTITUTED ||
+            font.status === FontStatus.NOT_AVAILABLE;
+    } catch (eSt) {
+        return false;
+    }
+}
+
+function preparatorFontIsComposite(font) {
+    try {
+        return font.fontType === FontTypes.ATC;
+    } catch (eType) {
+        return false;
+    }
+}
+
 // [pack.hero#link]: ферма подставит картинку из value set, PPI плейсхолдера не важен.
 function nameLooksLikeLinkVariable(name) {
     var n = String(name || "");
@@ -2320,6 +2457,101 @@ if (linksFolderPath) {
     }
 }
 
+// 1.104: Links + Document fonts рядом с INDD — уже пакет.
+// Лишние файлы только в отчёт. Папку шрифтов не разбираем, если не у всех есть файл
+// (как Syncer: иначе легко принять нужный шрифт за лишний).
+var documentFontsFolderPath = null;
+var packagedLayout = false;
+var packageUnusedLinks = [];
+var packageUnusedFonts = [];
+var figmaReferenceLayers = [];
+var figmaReferenceLinks = [];
+try {
+    var pkgDocFile = new File(doc.fullName);
+    if (pkgDocFile && pkgDocFile.parent && linksFolderPath) {
+        var fontsFolderProbe = new Folder(pkgDocFile.parent.fsName + "/Document fonts");
+        if (fontsFolderProbe.exists) {
+            documentFontsFolderPath = fontsFolderProbe.fsName;
+            packagedLayout = true;
+        }
+    }
+} catch (ePkg) {}
+
+if (packagedLayout) {
+    var usedLinkLower = {};
+    var pkgI;
+    for (pkgI = 0; pkgI < doc.links.length; pkgI++) {
+        try {
+            usedLinkLower[decodeFsName(doc.links[pkgI].name).toLowerCase()] = true;
+        } catch (eUsedLink) {}
+    }
+    packageUnusedLinks = unusedNamesInFolder(listFolderFileNames(linksFolderPath), usedLinkLower);
+
+    var usedFontLower = {};
+    var fontSetComplete = true;
+    try {
+        for (pkgI = 0; pkgI < doc.fonts.length; pkgI++) {
+            var pkgFont = doc.fonts[pkgI];
+            if (preparatorFontIsMissing(pkgFont) || preparatorFontIsComposite(pkgFont)) {
+                fontSetComplete = false;
+                continue;
+            }
+            var pkgFontFile = preparatorFontFile(pkgFont);
+            if (!pkgFontFile) {
+                fontSetComplete = false;
+                continue;
+            }
+            var pkgFontPath = "";
+            try {
+                pkgFontPath = pkgFontFile.fsName;
+            } catch (ePkgFontPath) {
+                pkgFontPath = "";
+            }
+            if (!pkgFontPath || preparatorFontPathIsCloud(pkgFontPath)) {
+                fontSetComplete = false;
+                continue;
+            }
+            usedFontLower[decodeFsName(pkgFontFile.name).toLowerCase()] = true;
+        }
+    } catch (eFontScan) {
+        fontSetComplete = false;
+    }
+    if (fontSetComplete) {
+        packageUnusedFonts = unusedNamesInFolder(listFolderFileNames(documentFontsFolderPath), usedFontLower);
+    }
+}
+
+try {
+    var seenRefLayer = {};
+    var refLayerI;
+    for (refLayerI = 0; refLayerI < doc.layers.length; refLayerI++) {
+        var refLayerName = String(doc.layers[refLayerI].name || "");
+        if (!isFigmaReferenceOverlayLayerName(refLayerName)) continue;
+        if (seenRefLayer[refLayerName]) continue;
+        seenRefLayer[refLayerName] = true;
+        figmaReferenceLayers.push(refLayerName);
+    }
+} catch (eRefLayers) {}
+try {
+    var seenRefLink = {};
+    var refLinkI;
+    for (refLinkI = 0; refLinkI < doc.links.length; refLinkI++) {
+        var refLink = doc.links[refLinkI];
+        if (!isFigmaReferenceOverlayLink(refLink)) continue;
+        var refLinkName = "";
+        try {
+            refLinkName = decodeFsName(refLink.name);
+        } catch (eRefName) {
+            refLinkName = "";
+        }
+        if (!refLinkName) refLinkName = "figma_reference_overlay";
+        var refLinkKey = refLinkName.toLowerCase();
+        if (seenRefLink[refLinkKey]) continue;
+        seenRefLink[refLinkKey] = true;
+        figmaReferenceLinks.push(refLinkName);
+    }
+} catch (eRefLinks) {}
+
 // --- ПРОВЕРКА QR-КОДОВ ---
 var qrErrors = [];
 var qrErrorMap = {};
@@ -2791,6 +3023,12 @@ if (missingLinks.length > 0) {
     }
     errorReport += "\n";
 }
+
+if (packagedLayout) {
+    errorReport += formatUnusedFolderReport("Links", packageUnusedLinks, 12);
+    errorReport += formatUnusedFolderReport("Document fonts", packageUnusedFonts, 12);
+}
+errorReport += formatFigmaReferenceLeftoverReport(figmaReferenceLayers, figmaReferenceLinks);
 
 if (REPORT_LINKS_NOT_IN_FOLDER && notInLinksFolder.length > 0) {
     errorReport += formatNotInLinksReport(notInLinksFolder, normalizedLinksFolder, 5);
