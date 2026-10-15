@@ -121,13 +121,14 @@ function unusedNamesInFolder(fileNames, usedLower) {
     return unused;
 }
 
-function formatUnusedFolderReport(folderLabel, names, maxExamples) {
+function formatUnusedFolderReport(folderLabel, names, maxExamples, heading) {
     if (!names || names.length === 0) return "";
     if (!maxExamples) maxExamples = 12;
     var lines = [];
     var shown = Math.min(maxExamples, names.length);
     var i;
-    lines.push("⚠ В папке " + folderLabel + " есть файлы, которые макет не использует:");
+    if (heading) lines.push(heading);
+    else lines.push("⚠ В папке " + folderLabel + " есть файлы, которые макет не использует:");
     for (i = 0; i < shown; i++) {
         lines.push("   • " + names[i]);
     }
@@ -3030,7 +3031,6 @@ if (missingLinks.length > 0) {
 }
 
 if (packagedLayout) {
-    errorReport += formatUnusedFolderReport("Links", packageUnusedLinks, 12);
     errorReport += formatUnusedFolderReport("Document fonts", packageUnusedFonts, 12);
 }
 errorReport += formatFigmaReferenceLeftoverReport(figmaReferenceLinks);
@@ -3306,6 +3306,15 @@ if (pasteboardExpandInfo && pasteboardExpandInfo.error) {
         logReport += "   • " + d.name + ": вылет " + bits.join(", ") + "\n";
     }
     logReport += "   Страница и блид не менялись. Фрейм картинки подрезать не надо.\n";
+}
+
+if (packagedLayout) {
+    errorReport += formatUnusedFolderReport(
+        "Links",
+        packageUnusedLinks,
+        12,
+        "⚠ Картинки, которые никуда не лезут:"
+    );
 }
 
 if (isBlankReport(errorReport)) {
