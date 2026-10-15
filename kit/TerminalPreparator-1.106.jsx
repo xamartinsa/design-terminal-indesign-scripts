@@ -144,10 +144,10 @@ function formatFigmaReferenceLeftoverReport(links) {
     for (i = 0; i < links.length; i++) {
         var name = links[i].name || "figma_reference_overlay";
         var sizeLabel = links[i].sizeLabel || "";
-        if (sizeLabel) lines.push("⚠ " + name + ", референс FigmaToIndd, " + sizeLabel);
-        else lines.push("⚠ " + name + ", референс FigmaToIndd");
+        if (sizeLabel) lines.push(name + ", " + sizeLabel);
+        else lines.push(name);
     }
-    return lines.join("\n") + "\n\n";
+    return "⚠ В макете остались референсы из фигмы:\n" + lines.join("\n") + "\n\n";
 }
 
 function referenceLinkSizeLabel(link) {
