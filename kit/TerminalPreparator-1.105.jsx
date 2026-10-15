@@ -137,20 +137,34 @@ function formatUnusedFolderReport(folderLabel, names, maxExamples) {
     return lines.join("\n") + "\n\n";
 }
 
-function formatFigmaReferenceLeftoverReport(layerNames, linkNames) {
-    var layers = layerNames || [];
-    var links = linkNames || [];
-    if (layers.length === 0 && links.length === 0) return "";
+function formatFigmaReferenceLeftoverReport(links) {
+    if (!links || links.length === 0) return "";
     var lines = [];
     var i;
-    lines.push("⚠ В макете остались референс-картинки FigmaToIndd. Перед заливкой в Терминал их надо убрать.");
-    for (i = 0; i < layers.length; i++) {
-        lines.push("   • слой " + layers[i]);
-    }
     for (i = 0; i < links.length; i++) {
-        lines.push("   • " + links[i]);
+        var name = links[i].name || "figma_reference_overlay";
+        var sizeLabel = links[i].sizeLabel || "";
+        if (sizeLabel) lines.push("⚠ " + name + ", референс FigmaToIndd, " + sizeLabel);
+        else lines.push("⚠ " + name + ", референс FigmaToIndd");
     }
     return lines.join("\n") + "\n\n";
+}
+
+function referenceLinkSizeLabel(link) {
+    var bytes = 0;
+    try {
+        bytes = Number(link.size);
+    } catch (eSize) {
+        bytes = 0;
+    }
+    if (!(bytes > 0)) {
+        try {
+            var refFile = new File(link.filePath);
+            if (refFile.exists) bytes = Number(refFile.length);
+        } catch (eRefFile) {}
+    }
+    if (!(bytes > 0)) return "";
+    return formatFileSizeMb(bytes / 1048576);
 }
 
 function listFolderFileNames(folderPath) {
@@ -2464,7 +2478,6 @@ var documentFontsFolderPath = null;
 var packagedLayout = false;
 var packageUnusedLinks = [];
 var packageUnusedFonts = [];
-var figmaReferenceLayers = [];
 var figmaReferenceLinks = [];
 try {
     var pkgDocFile = new File(doc.fullName);
@@ -2522,17 +2535,6 @@ if (packagedLayout) {
 }
 
 try {
-    var seenRefLayer = {};
-    var refLayerI;
-    for (refLayerI = 0; refLayerI < doc.layers.length; refLayerI++) {
-        var refLayerName = String(doc.layers[refLayerI].name || "");
-        if (!isFigmaReferenceOverlayLayerName(refLayerName)) continue;
-        if (seenRefLayer[refLayerName]) continue;
-        seenRefLayer[refLayerName] = true;
-        figmaReferenceLayers.push(refLayerName);
-    }
-} catch (eRefLayers) {}
-try {
     var seenRefLink = {};
     var refLinkI;
     for (refLinkI = 0; refLinkI < doc.links.length; refLinkI++) {
@@ -2548,7 +2550,10 @@ try {
         var refLinkKey = refLinkName.toLowerCase();
         if (seenRefLink[refLinkKey]) continue;
         seenRefLink[refLinkKey] = true;
-        figmaReferenceLinks.push(refLinkName);
+        figmaReferenceLinks.push({
+            name: refLinkName,
+            sizeLabel: referenceLinkSizeLabel(refLink)
+        });
     }
 } catch (eRefLinks) {}
 
@@ -3028,7 +3033,7 @@ if (packagedLayout) {
     errorReport += formatUnusedFolderReport("Links", packageUnusedLinks, 12);
     errorReport += formatUnusedFolderReport("Document fonts", packageUnusedFonts, 12);
 }
-errorReport += formatFigmaReferenceLeftoverReport(figmaReferenceLayers, figmaReferenceLinks);
+errorReport += formatFigmaReferenceLeftoverReport(figmaReferenceLinks);
 
 if (REPORT_LINKS_NOT_IN_FOLDER && notInLinksFolder.length > 0) {
     errorReport += formatNotInLinksReport(notInLinksFolder, normalizedLinksFolder, 5);
