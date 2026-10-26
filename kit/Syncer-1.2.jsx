@@ -1,10 +1,13 @@
 ﻿#target "indesign"
 
-// Syncer-1.1.jsx
+// Syncer-1.2.jsx
 // Синкер: картинки в Links + шрифты в Document fonts рядом с INDD.
 // Relink картинкам; шрифтам relink не нужен — InDesign берёт по имени.
 // 1.1: встроенный QR не ошибка; шрифты из Windows Fonts копирует запасным путём;
 // один variable-файл не пытается копировать по разу на каждое начертание.
+// 1.2: журнал прогона (каждый линк from → to, удаления, одинаковые имена).
+// Пишет рядом с INDD «имя.syncer.log» и в %LOCALAPPDATA%\DesignTerminal\syncer.log
+// (Mac: ~/Library/Logs/DesignTerminal/syncer.log). Файлы *.log в Links не удаляет.
 
 (function () {
     if (app.documents.length === 0) {
@@ -26,6 +29,84 @@
     }
 
     var docFolder = docFile.parent;
+    var runLog = [];
+
+    function note(line) {
+        runLog.push(String(line));
+    }
+
+    function stamp() {
+        var d = new Date();
+        function z(n) { return (n < 10 ? "0" : "") + n; }
+        return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()) +
+            " " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
+    }
+
+    function linkStatusName(link) {
+        try {
+            if (link.status === LinkStatus.LINK_EMBEDDED) return "embedded";
+            if (link.status === LinkStatus.LINK_MISSING) return "missing";
+            if (link.status === LinkStatus.LINK_INACCESSIBLE) return "inaccessible";
+            if (link.status === LinkStatus.LINK_OUT_OF_DATE) return "out-of-date";
+            if (link.status === LinkStatus.NORMAL) return "normal";
+        } catch (eStName) {}
+        return "unknown";
+    }
+
+    function logsFolder() {
+        var dir = null;
+        try {
+            var local = $.getenv("LOCALAPPDATA");
+            if (local) dir = new Folder(local + "/DesignTerminal");
+        } catch (eLocal) {}
+        if (!dir) {
+            try {
+                var home = $.getenv("HOME");
+                if (!home) home = $.getenv("USERPROFILE");
+                if (home) dir = new Folder(home + "/Library/Logs/DesignTerminal");
+            } catch (eHome) {}
+        }
+        if (!dir) return null;
+        try {
+            if (!dir.exists) dir.create();
+        } catch (eMk) {}
+        try {
+            if (dir.exists) return dir;
+        } catch (eEx) {}
+        return null;
+    }
+
+    function appendTextFile(file, text) {
+        var existed = false;
+        try { existed = file.exists && file.length > 0; } catch (eEx) {}
+        file.encoding = "UTF-8";
+        if (!file.open("a")) return false;
+        try {
+            if (!existed) file.write("\uFEFF");
+            file.write(text);
+        } finally {
+            try { file.close(); } catch (eCl) {}
+        }
+        return true;
+    }
+
+    function flushRunLog() {
+        if (!runLog.length) return;
+        var text = runLog.join("\r\n") + "\r\n\r\n";
+        var targets = [];
+        try {
+            var base = decodeURI(docFile.name).replace(/\.indd$/i, "");
+            targets.push(new File(docFolder.fsName + "/" + base + ".syncer.log"));
+        } catch (eDocLog) {}
+        try {
+            var dir = logsFolder();
+            if (dir) targets.push(new File(dir.fsName + "/syncer.log"));
+        } catch (eDirLog) {}
+        var t;
+        for (t = 0; t < targets.length; t++) {
+            appendTextFile(targets[t], text);
+        }
+    }
 
     function normalizePath(path) {
         return decodeURI(String(path)).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -52,6 +133,9 @@
             return true;
         }
         if (name.indexOf("AdobeFnt") === 0) {
+            return true;
+        }
+        if (name.length >= 4 && name.substring(name.length - 4).toLowerCase() === ".log") {
             return true;
         }
         return false;
@@ -209,12 +293,60 @@
     var linkErrors = [];
     var linkMissing = [];
 
+    function noteLinkCollisions() {
+        var groups = {};
+        var order = [];
+        var i;
+        for (i = 0; i < doc.links.length; i++) {
+            var link = doc.links[i];
+            if (isEmbeddedLink(link)) continue;
+            var name = "";
+            try { name = decodeURI(link.name); } catch (eN) { name = ""; }
+            if (!name) continue;
+            var key = name.toLowerCase();
+            var path = "";
+            try { path = String(link.filePath); } catch (eP) { path = "(no path)"; }
+            if (!groups[key]) {
+                groups[key] = [];
+                order.push(key);
+            }
+            groups[key].push(name + " | " + path);
+        }
+        for (i = 0; i < order.length; i++) {
+            var list = groups[order[i]];
+            if (list.length < 2) continue;
+            note("COLLISION same name x" + list.length);
+            var j;
+            for (j = 0; j < list.length; j++) note("  " + list[j]);
+        }
+    }
+
+    function noteLinksAfter() {
+        note("after");
+        var i;
+        try {
+            for (i = 0; i < doc.links.length; i++) {
+                var link = doc.links[i];
+                var name = "";
+                try { name = decodeURI(link.name); } catch (eN) { name = "?"; }
+                var path = "";
+                try { path = String(link.filePath); } catch (eP) { path = linkStatusName(link); }
+                note("  " + name + " -> " + path);
+            }
+        } catch (eAfter) {
+            note("after failed " + eAfter);
+        }
+    }
+
     function syncLinks() {
         var linksFolder = new Folder(docFolder.fsName + "/Links");
         if (!ensureFolder(linksFolder)) {
             linkErrors.push("не удалось создать папку Links");
+            note("ERROR Links folder");
             return;
         }
+
+        noteLinkCollisions();
 
         var usedFiles = {};
         var allLinks = doc.links;
@@ -224,14 +356,17 @@
             var link = allLinks[i];
             var linkName = decodeURI(link.name);
             usedFiles[linkName.toLowerCase()] = linkName;
+            note("link " + linkName + " [" + linkStatusName(link) + "]");
 
             if (isEmbeddedLink(link)) {
+                note("  action embedded");
                 continue;
             }
 
             try {
                 if (link.status === LinkStatus.LINK_MISSING || link.status === LinkStatus.LINK_INACCESSIBLE) {
                     linkMissing.push(linkName);
+                    note("  action missing");
                     continue;
                 }
             } catch (eSt) {}
@@ -241,17 +376,21 @@
                 currentPath = normalizePath(link.filePath);
             } catch (ePath) {
                 linkErrors.push(linkName + " — нет пути");
+                note("  action no-path");
                 continue;
             }
+            note("  from " + currentPath);
 
             var correctPath = normalizePath(linksFolder.fsName + "/" + link.name);
             if (currentPath === correctPath) {
+                note("  action already");
                 continue;
             }
 
             try {
                 var existingFile = new File(linksFolder.fsName + "/" + link.name);
                 if (existingFile.exists && normalizePath(existingFile.fsName) !== currentPath) {
+                    note("  removed-dest " + existingFile.fsName);
                     existingFile.remove();
                 }
                 link.copyLink(linksFolder.fsName);
@@ -260,14 +399,19 @@
                     link.relink(newFile);
                     link.update();
                     linkCopied++;
+                    note("  action copied");
+                    note("  to " + newFile.fsName);
                 } else {
                     linkErrors.push(linkName + " — не скопировался");
+                    note("  action copy-failed");
                 }
             } catch (eCopy) {
                 if (errorLooksEmbedded(eCopy)) {
+                    note("  action embedded");
                     continue;
                 }
                 linkErrors.push(linkName + " — " + eCopy);
+                note("  action error " + eCopy);
             }
         }
 
@@ -288,8 +432,13 @@
             try {
                 if (item.remove()) {
                     linkRemoved++;
+                    note("deleted " + item.fsName);
+                } else {
+                    note("delete-failed " + item.fsName);
                 }
-            } catch (eRm) {}
+            } catch (eRm) {
+                note("delete-failed " + item.fsName + " " + eRm);
+            }
         }
     }
 
@@ -378,6 +527,7 @@
         if (!ensureFolder(fontsFolder)) {
             fontSkipped.push("не удалось создать папку Document fonts");
             fontCanDelete = false;
+            note("ERROR Document fonts folder");
             return;
         }
 
@@ -392,11 +542,13 @@
             if (isMissingStatus(font)) {
                 fontMissing.push(label);
                 fontCanDelete = false;
+                note("font missing " + label);
                 continue;
             }
             if (isComposite(font)) {
                 fontSkipped.push(label + " — составной шрифт, файла нет");
                 fontCanDelete = false;
+                note("font composite " + label);
                 continue;
             }
 
@@ -404,6 +556,7 @@
             if (!src) {
                 fontSkipped.push(label + " — нет пути к файлу");
                 fontCanDelete = false;
+                note("font no-path " + label);
                 continue;
             }
 
@@ -411,6 +564,7 @@
             if (isCloudFontPath(srcPath)) {
                 fontSkipped.push(label + " — Adobe Fonts нельзя положить в Document fonts");
                 fontCanDelete = false;
+                note("font adobe-fonts " + label);
                 continue;
             }
 
@@ -424,11 +578,13 @@
             seenFontFiles[fileKey] = true;
 
             if (isInsideFolder(srcPath, fontsFolder.fsName)) {
+                note("font already " + baseName);
                 continue;
             }
 
             var destFile = new File(fontsFolder.fsName + "/" + baseName);
             if (fileSizeOf(destFile) > 0) {
+                note("font dest-exists " + baseName);
                 continue;
             }
 
@@ -437,13 +593,16 @@
                 if (!copied || fileSizeOf(destFile) === 0) {
                     fontSkipped.push(baseName + " — Windows не отдал файл из Fonts");
                     fontCanDelete = false;
+                    note("font copy-failed " + baseName + " from " + src.fsName);
                     continue;
                 }
                 fontCopied++;
                 fontCopiedNames.push(baseName);
+                note("font copied " + src.fsName + " -> " + destFile.fsName);
             } catch (eCopy) {
                 fontSkipped.push(baseName + " — " + eCopy);
                 fontCanDelete = false;
+                note("font error " + baseName + " " + eCopy);
             }
         }
 
@@ -471,11 +630,14 @@
                     if (item.remove()) {
                         fontRemoved++;
                         fontRemovedNames.push(name);
+                        note("font deleted " + item.fsName);
                     } else {
                         lockedPaths.push(item.fsName);
+                        note("font delete-locked " + item.fsName);
                     }
                 } catch (eRm) {
                     lockedPaths.push(item.fsName);
+                    note("font delete-locked " + item.fsName);
                 }
             }
         }
@@ -502,8 +664,10 @@
                 if (lockedFile.exists && lockedFile.remove()) {
                     fontRemoved++;
                     fontRemovedNames.push(fileNameOf(lockedFile));
+                    note("font deleted " + lockedFile.fsName);
                 } else if (lockedFile.exists) {
                     stillLocked.push(lockedPaths[p]);
+                    note("font delete-locked " + lockedPaths[p]);
                 }
             } catch (eRm2) {
                 stillLocked.push(lockedPaths[p]);
@@ -517,9 +681,17 @@
         }
     }
 
-    syncLinks();
-    saveIfDirty();
-    syncFonts();
+    note("---- " + stamp() + " Syncer 1.2 ----");
+    note("doc " + docFile.fsName);
+    try {
+        syncLinks();
+        noteLinksAfter();
+        saveIfDirty();
+        syncFonts();
+    } catch (eRun) {
+        note("ERROR " + eRun);
+    }
+    flushRunLog();
 
     var hasProblems =
         linkErrors.length > 0 ||

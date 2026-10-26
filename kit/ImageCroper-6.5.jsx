@@ -9,6 +9,9 @@
 // у фото 0 при живом повороте в матрице. Прямоугольник bounds — это габарит,
 // не углы пути. 6.3 берёт углы пути, переводит их в пиксели файла и
 // запекает именно это окно. Рядом с кропом пишет текстовый лог.
+// 6.5: тот же лог ещё дописывается в журнал прогона —
+// рядом с INDD «имя.cropper.log» и в %LOCALAPPDATA%\DesignTerminal\cropper.log
+// (Mac: ~/Library/Logs/DesignTerminal/cropper.log).
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -26,7 +29,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.4";
+    var SCRIPT_VERSION = "6.5";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -446,17 +449,94 @@
         return Math.sqrt(dx * dx + dy * dy);
     }
 
+    function stamp() {
+        var d = new Date();
+        function z(n) { return (n < 10 ? "0" : "") + n; }
+        return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()) +
+            " " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
+    }
+
+    function logsFolder() {
+        var dir = null;
+        try {
+            var local = $.getenv("LOCALAPPDATA");
+            if (local) dir = new Folder(local + "/DesignTerminal");
+        } catch (eLocal) {}
+        if (!dir) {
+            try {
+                var home = $.getenv("HOME");
+                if (!home) home = $.getenv("USERPROFILE");
+                if (home) dir = new Folder(home + "/Library/Logs/DesignTerminal");
+            } catch (eHome) {}
+        }
+        if (!dir) return null;
+        try {
+            if (!dir.exists) dir.create();
+        } catch (eMk) {}
+        try {
+            if (dir.exists) return dir;
+        } catch (eEx) {}
+        return null;
+    }
+
+    function appendTextFile(file, text) {
+        var existed = false;
+        try { existed = file.exists && file.length > 0; } catch (eEx) {}
+        file.encoding = "UTF-8";
+        if (!file.open("a")) return false;
+        try {
+            if (!existed) file.write("\uFEFF");
+            file.write(text);
+        } finally {
+            try { file.close(); } catch (eCl) {}
+        }
+        return true;
+    }
+
+    function appendCollectedLog(lines, geomFile) {
+        var head = [];
+        head.push("---- " + stamp() + " ImageCroper " + SCRIPT_VERSION + " ----");
+        try {
+            if (doc.saved) head.push("doc " + doc.fullName.fsName);
+            else head.push("doc (unsaved)");
+        } catch (eDoc) {
+            head.push("doc (unsaved)");
+        }
+        try { head.push("frame " + frame.name); } catch (eFr) {}
+        try { head.push("linkBefore " + origFile.fsName); } catch (eLb) {}
+        if (geomFile) {
+            try { head.push("geomLog " + geomFile.fsName); } catch (eGeom) {}
+        }
+        var text = head.concat(lines).join("\r\n") + "\r\n\r\n";
+        var targets = [];
+        try {
+            if (doc.saved) {
+                var docFile = doc.fullName;
+                var base = decodeURI(docFile.name).replace(/\.indd$/i, "");
+                targets.push(new File(docFile.parent.fsName + "/" + base + ".cropper.log"));
+            }
+        } catch (eNear) {}
+        try {
+            var dir = logsFolder();
+            if (dir) targets.push(new File(dir.fsName + "/cropper.log"));
+        } catch (eDir) {}
+        var i;
+        for (i = 0; i < targets.length; i++) appendTextFile(targets[i], text);
+    }
+
     function writeTextLog(file, lines) {
         var f = new File(file.fsName);
         f.encoding = "UTF-8";
-        if (!f.open("w")) return false;
-        try {
-            f.write("\uFEFFImageCroper " + SCRIPT_VERSION + "\r\n");
-            f.write(lines.join("\r\n"));
-            f.write("\r\n");
-        } finally {
-            try { f.close(); } catch (eC) {}
+        if (f.open("w")) {
+            try {
+                f.write("\uFEFFImageCroper " + SCRIPT_VERSION + "\r\n");
+                f.write(lines.join("\r\n"));
+                f.write("\r\n");
+            } finally {
+                try { f.close(); } catch (eC) {}
+            }
         }
+        try { appendCollectedLog(lines, f); } catch (eApp) {}
         return true;
     }
 
