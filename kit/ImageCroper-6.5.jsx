@@ -9,9 +9,8 @@
 // у фото 0 при живом повороте в матрице. Прямоугольник bounds — это габарит,
 // не углы пути. 6.3 берёт углы пути, переводит их в пиксели файла и
 // запекает именно это окно. Рядом с кропом пишет текстовый лог.
-// 6.5: тот же лог ещё дописывается в журнал прогона —
-// рядом с INDD «имя.cropper.log» и в %LOCALAPPDATA%\DesignTerminal\cropper.log
-// (Mac: ~/Library/Logs/DesignTerminal/cropper.log).
+// 6.5: журнал прогона только во временной папке %TEMP%\DesignTerminal\cropper.log.
+// Рядом с макетом и с картинкой лог не пишет.
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -459,16 +458,8 @@
     function logsFolder() {
         var dir = null;
         try {
-            var local = $.getenv("LOCALAPPDATA");
-            if (local) dir = new Folder(local + "/DesignTerminal");
-        } catch (eLocal) {}
-        if (!dir) {
-            try {
-                var home = $.getenv("HOME");
-                if (!home) home = $.getenv("USERPROFILE");
-                if (home) dir = new Folder(home + "/Library/Logs/DesignTerminal");
-            } catch (eHome) {}
-        }
+            dir = new Folder(Folder.temp.fsName + "/DesignTerminal");
+        } catch (eTemp) {}
         if (!dir) return null;
         try {
             if (!dir.exists) dir.create();
@@ -493,7 +484,7 @@
         return true;
     }
 
-    function appendCollectedLog(lines, geomFile) {
+    function appendCollectedLog(lines) {
         var head = [];
         head.push("---- " + stamp() + " ImageCroper " + SCRIPT_VERSION + " ----");
         try {
@@ -504,39 +495,15 @@
         }
         try { head.push("frame " + frame.name); } catch (eFr) {}
         try { head.push("linkBefore " + origFile.fsName); } catch (eLb) {}
-        if (geomFile) {
-            try { head.push("geomLog " + geomFile.fsName); } catch (eGeom) {}
-        }
         var text = head.concat(lines).join("\r\n") + "\r\n\r\n";
-        var targets = [];
-        try {
-            if (doc.saved) {
-                var docFile = doc.fullName;
-                var base = decodeURI(docFile.name).replace(/\.indd$/i, "");
-                targets.push(new File(docFile.parent.fsName + "/" + base + ".cropper.log"));
-            }
-        } catch (eNear) {}
         try {
             var dir = logsFolder();
-            if (dir) targets.push(new File(dir.fsName + "/cropper.log"));
+            if (dir) appendTextFile(new File(dir.fsName + "/cropper.log"), text);
         } catch (eDir) {}
-        var i;
-        for (i = 0; i < targets.length; i++) appendTextFile(targets[i], text);
     }
 
     function writeTextLog(file, lines) {
-        var f = new File(file.fsName);
-        f.encoding = "UTF-8";
-        if (f.open("w")) {
-            try {
-                f.write("\uFEFFImageCroper " + SCRIPT_VERSION + "\r\n");
-                f.write(lines.join("\r\n"));
-                f.write("\r\n");
-            } finally {
-                try { f.close(); } catch (eC) {}
-            }
-        }
-        try { appendCollectedLog(lines, f); } catch (eApp) {}
+        try { appendCollectedLog(lines); } catch (eApp) {}
         return true;
     }
 

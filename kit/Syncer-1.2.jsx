@@ -6,8 +6,7 @@
 // 1.1: встроенный QR не ошибка; шрифты из Windows Fonts копирует запасным путём;
 // один variable-файл не пытается копировать по разу на каждое начертание.
 // 1.2: журнал прогона (каждый линк from → to, удаления, одинаковые имена).
-// Пишет рядом с INDD «имя.syncer.log» и в %LOCALAPPDATA%\DesignTerminal\syncer.log
-// (Mac: ~/Library/Logs/DesignTerminal/syncer.log). Файлы *.log в Links не удаляет.
+// Только временная папка: %TEMP%\DesignTerminal\syncer.log. Рядом с макетом не пишет.
 
 (function () {
     if (app.documents.length === 0) {
@@ -56,16 +55,8 @@
     function logsFolder() {
         var dir = null;
         try {
-            var local = $.getenv("LOCALAPPDATA");
-            if (local) dir = new Folder(local + "/DesignTerminal");
-        } catch (eLocal) {}
-        if (!dir) {
-            try {
-                var home = $.getenv("HOME");
-                if (!home) home = $.getenv("USERPROFILE");
-                if (home) dir = new Folder(home + "/Library/Logs/DesignTerminal");
-            } catch (eHome) {}
-        }
+            dir = new Folder(Folder.temp.fsName + "/DesignTerminal");
+        } catch (eTemp) {}
         if (!dir) return null;
         try {
             if (!dir.exists) dir.create();
@@ -93,19 +84,10 @@
     function flushRunLog() {
         if (!runLog.length) return;
         var text = runLog.join("\r\n") + "\r\n\r\n";
-        var targets = [];
-        try {
-            var base = decodeURI(docFile.name).replace(/\.indd$/i, "");
-            targets.push(new File(docFolder.fsName + "/" + base + ".syncer.log"));
-        } catch (eDocLog) {}
         try {
             var dir = logsFolder();
-            if (dir) targets.push(new File(dir.fsName + "/syncer.log"));
+            if (dir) appendTextFile(new File(dir.fsName + "/syncer.log"), text);
         } catch (eDirLog) {}
-        var t;
-        for (t = 0; t < targets.length; t++) {
-            appendTextFile(targets[t], text);
-        }
     }
 
     function normalizePath(path) {
@@ -133,9 +115,6 @@
             return true;
         }
         if (name.indexOf("AdobeFnt") === 0) {
-            return true;
-        }
-        if (name.length >= 4 && name.substring(name.length - 4).toLowerCase() === ".log") {
             return true;
         }
         return false;
