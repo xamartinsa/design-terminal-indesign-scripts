@@ -260,6 +260,93 @@ function itemIsLinkVariablePlaceholder(item) {
     return false;
 }
 
+// Shift+Enter в панели «Слои» дописывает перевод строки после ].
+// Ферма берёт pageItem.name целиком, датасет — без хвоста, job падает.
+function isVariableNameJunkChar(ch) {
+    return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" ||
+        ch === "\f" || ch === "\v" || ch === "\u00A0" || ch === "\uFEFF" ||
+        ch === "\u200B" || ch === "\u2028" || ch === "\u2029";
+}
+
+function trimVariableNameJunk(name) {
+    var s = String(name || "");
+    var start = 0;
+    var end = s.length;
+    while (start < end && isVariableNameJunkChar(s.charAt(start))) start++;
+    while (end > start && isVariableNameJunkChar(s.charAt(end - 1))) end--;
+    return s.substring(start, end);
+}
+
+function cleanVariableObjectName(name) {
+    var original = String(name || "");
+    var trimmed = trimVariableNameJunk(original);
+    if (trimmed === original) return original;
+    if (/^\[[^\[\]\r\n]*\]$/.test(trimmed)) return trimmed;
+    return original;
+}
+
+var trimmedObjectNameFixes = [];
+
+function rememberTrimmedObjectName(clean) {
+    var i;
+    for (i = 0; i < trimmedObjectNameFixes.length; i++) {
+        if (trimmedObjectNameFixes[i] === clean) return;
+    }
+    trimmedObjectNameFixes.push(clean);
+}
+
+function stripJunkFromItemVariableName(item) {
+    var rawName = "";
+    var cleanName = "";
+    try {
+        rawName = String(item.name || "");
+    } catch (eName) {
+        rawName = "";
+    }
+    if (rawName) {
+        cleanName = cleanVariableObjectName(rawName);
+        if (cleanName !== rawName) {
+            try {
+                item.name = cleanName;
+                rememberTrimmedObjectName(cleanName);
+            } catch (eSet) {}
+        }
+    }
+    try {
+        var rawLabel = String(item.label || "");
+        if (rawLabel) {
+            var cleanLabel = cleanVariableObjectName(rawLabel);
+            if (cleanLabel !== rawLabel) {
+                item.label = cleanLabel;
+                rememberTrimmedObjectName(cleanLabel);
+            }
+        }
+    } catch (eLabel) {}
+}
+
+function stripJunkFromVariableObjectNames(docRef) {
+    var pools = [];
+    var p, i, j, items;
+    try { pools.push(docRef.spreads); } catch (eSpreads) {}
+    try { pools.push(docRef.masterSpreads); } catch (eMasters) {}
+    for (p = 0; p < pools.length; p++) {
+        var spreads = pools[p];
+        for (i = 0; i < spreads.length; i++) {
+            try {
+                items = spreads[i].allPageItems;
+            } catch (eItems) {
+                continue;
+            }
+            for (j = 0; j < items.length; j++) {
+                try {
+                    if (isFigmaReferenceOverlayItem(items[j])) continue;
+                } catch (eOverlay) {}
+                stripJunkFromItemVariableName(items[j]);
+            }
+        }
+    }
+}
+
 // --- СНЯТИЕ ЗАМКОВ СО ВСЕХ ОБЪЕКТОВ И СЛОЕВ ---
 // Оверлей Figma не трогаем: он специально hidden + locked.
 for (var i = 0; i < doc.layers.length; i++) {
@@ -292,6 +379,8 @@ for (var i = 0; i < doc.masterSpreads.length; i++) {
         } catch(e) {}
     }
 }
+
+stripJunkFromVariableObjectNames(doc);
 
 // Проверка наличия блидов
 var hasBleed = doc.documentPreferences.documentBleedTopOffset > 0 &&
@@ -3287,6 +3376,13 @@ if (variablesWithoutBrackets.length > 0) {
 
 if (systemVariablesFixedCount > 0) {
     logReport += "✓ Исправлены ошибки в системных переменных:\n" + fixedSystemVariablesReport;
+}
+
+if (trimmedObjectNameFixes.length > 0) {
+    logReport += "✓ Убраны переносы и пробелы по краям имён объектов:\n";
+    for (var tni = 0; tni < trimmedObjectNameFixes.length; tni++) {
+        logReport += "   • " + trimmedObjectNameFixes[tni] + "\n";
+    }
 }
 
 if (pasteboardExpandInfo && pasteboardExpandInfo.error) {
