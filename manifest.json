@@ -1,24 +1,24 @@
 {
-    "updatedAt":  "2026-10-29T12:24:36Z",
+    "updatedAt":  "2026-10-29T12:35:47Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "technicalFolder":  "zzz Technical",
     "files":  [
                   {
                       "id":  "TerminalPreparator",
-                      "name":  "Preporator.jsx",
+                      "name":  "Preporator-1.107.jsx",
                       "version":  "1.107",
                       "sha256":  "ba6b64d15992d1fd5e62db7d0c557402d9e8617a0738de5ad20bc55d0bfc853b"
                   },
                   {
                       "id":  "LegalParagraphSetup",
-                      "name":  "Legaler.jsx",
+                      "name":  "Legaler-1.15.jsx",
                       "version":  "1.15",
                       "sha256":  "0e1a201e764bc9b5f8606bb8adbea35ddab3cf116e53eee99afd5aa9dba8f7cd"
                   },
                   {
                       "id":  "ImageCroper",
-                      "name":  "Croper.jsx",
+                      "name":  "Croper-6.5.jsx",
                       "version":  "6.5",
                       "sha256":  "dc40637565cf5fe710b2305b5e0e24ff0a2cc54289859639150cedac0849a2d4"
                   },
@@ -30,7 +30,7 @@
                   },
                   {
                       "id":  "SaveAsInddAndIdml",
-                      "name":  "Saver.jsx",
+                      "name":  "Saver-1.0.jsx",
                       "version":  "1.0",
                       "sha256":  "20c94c96807e591810849d7f641573e78097abd27c053309754a7ddf64dd3593"
                   },
@@ -57,7 +57,7 @@
                   },
                   {
                       "id":  "ReplaceVariables",
-                      "name":  "подстановщик.jsx",
+                      "name":  "Replacer-1.3.jsx",
                       "version":  "1.3",
                       "sha256":  "b4b57d836dc4fafd57225d575b44f7c5f258d19cbfcc5e39038a369d1a9ef2df",
                       "panelFolder":  "zzz Advanced"
