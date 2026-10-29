@@ -72,15 +72,14 @@ bash ~/Downloads/Update-DT-Scripts.command
 
 Корень:
 
-- TerminalPreparator  
-- LegalParagraphSetup  
-- ImageCroper  
+- Preporator  
+- Legaler  
+- Croper  
 - Syncer  
-- SaveAsInddAndIdml  
-- AutoFontSizeGrep  
+- Saver  
 - Publisher (Windows; нужны Python + один раз `login.bat`)
 
-Папка **zzz Advanced**: TerminalBelarusPreparator  
+Папка **zzz Advanced**: AutoFontSizeGrep, CharacterStylesSetup, подстановщик, TerminalBelarusPreparator  
 
 Папка **zzz Technical**: лог апдейтера, не скрипт.
 

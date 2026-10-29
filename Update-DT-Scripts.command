@@ -121,7 +121,8 @@ for (const f of (m.files || [])) {
     f.name || "",
     String(f.sha256 || "").toLowerCase(),
     f.panelFolder || "",
-    f.windowsOnly ? "1" : "0"
+    f.windowsOnly ? "1" : "0",
+    encodeURIComponent(f.name || "")
   ].join("\t"));
 }
 writeUtf8(outPath, lines.join("\n") + "\n");
@@ -170,14 +171,15 @@ done < "$PANEL_LIST"
 
 log_line "InDesign Version $MAX_VER: installing into ${#TARGETS[@]} Scripts Panel folder(s)"
 
-while IFS=$'\t' read -r id name sha folder winonly; do
+while IFS=$'\t' read -r id name sha folder winonly encoded; do
   [[ -n "${name:-}" ]] || continue
   if [[ "${winonly:-0}" == "1" ]]; then
     log_line "  skip $id (Windows only)"
     continue
   fi
   log_line "  download $id -> $name"
-  curl -fsSL "$BASE_URL/kit/$name" -o "$TMP/$name" || die "failed to download $name"
+  url_name="${encoded:-$name}"
+  curl -fsSL "$BASE_URL/kit/$url_name" -o "$TMP/$name" || die "failed to download $name"
   got="$(shasum -a 256 "$TMP/$name" | awk '{ print tolower($1) }')"
   if [[ -n "$sha" && "$got" != "$sha" ]]; then
     log_line "  expectedSha=$sha"
@@ -203,7 +205,7 @@ for panel in "${TARGETS[@]}"; do
   printf '%s\t%s\n' "" "$TECH_FOLDER" >> "$KEEP"
   printf '%s\t%s\n' "$TECH_FOLDER" "_update-last.log" >> "$KEEP"
 
-  while IFS=$'\t' read -r id name sha folder winonly; do
+  while IFS=$'\t' read -r id name sha folder winonly encoded; do
     [[ -n "${name:-}" ]] || continue
     if [[ "${winonly:-0}" == "1" ]]; then
       continue

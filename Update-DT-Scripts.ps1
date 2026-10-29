@@ -107,7 +107,8 @@ try {
   foreach ($f in $m.files) {
     $dl = Join-Path $tmp $f.name
     Add-Note "  download $($f.id) -> $($f.name)"
-    Invoke-WebRequest -Uri "$base/kit/$($f.name)" -OutFile $dl -UseBasicParsing
+    $fileUri = New-Object System.Uri(($base + '/kit/' + [string]$f.name))
+    Invoke-WebRequest -Uri $fileUri -OutFile $dl -UseBasicParsing
     $hash = (Get-FileHash -LiteralPath $dl -Algorithm SHA256).Hash.ToLowerInvariant()
     $expected = ([string]$f.sha256).ToLowerInvariant()
     if ($expected -and ($hash -ne $expected)) {
