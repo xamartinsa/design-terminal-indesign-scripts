@@ -238,6 +238,455 @@ function preparatorFontIsComposite(font) {
     }
 }
 
+// Шрифты макета: doc.fonts плюс лицо на тексте и шрифты из GREP, вложенных
+// стилей, буллетов и нумерации. Find Font их часто не показывает, если стиль
+// задаёт только кегль. Тот же обход, что Syncer 1.3 — иначе нужный файл
+// в Document fonts выглядит лишним.
+function isNothingValue(value) {
+    if (value === null || typeof value === "undefined") return true;
+    try {
+        if (value === NothingEnum.NOTHING) return true;
+    } catch (eNothing) {}
+    try {
+        var name = String(value);
+        if (!name || name === "NothingEnum.NOTHING") return true;
+    } catch (eStr) {}
+    return false;
+}
+
+function looksLikeFont(value) {
+    if (!value || isNothingValue(value)) return false;
+    try {
+        var family = value.fontFamily;
+        var styleName = value.fontStyleName;
+        if (!family || !styleName) return false;
+        return true;
+    } catch (eFont) {
+        return false;
+    }
+}
+
+function resolveNamedFont(family, styleName) {
+    if (isNothingValue(styleName)) styleName = null;
+    var familyName = "";
+    var styleWasDefault = false;
+    if (looksLikeFont(family)) {
+        try {
+            if (!styleName || String(family.fontStyleName) === String(styleName)) return family;
+        } catch (eSame) {}
+        try { familyName = String(family.fontFamily); } catch (eFam) { familyName = ""; }
+    } else if (!isNothingValue(family)) {
+        try { familyName = String(family); } catch (eStr) { familyName = ""; }
+    }
+    if (!familyName || familyName === "NothingEnum.NOTHING") return null;
+    if (!styleName) {
+        try {
+            if (looksLikeFont(family)) styleName = String(family.fontStyleName);
+        } catch (eStyle) {}
+    }
+    if (!styleName) {
+        styleName = "Regular";
+        styleWasDefault = true;
+    }
+    var tab = String.fromCharCode(9);
+    var font = null;
+    try {
+        font = app.fonts.itemByName(familyName + tab + String(styleName));
+    } catch (eBy) { font = null; }
+    try {
+        if (font && font.isValid && looksLikeFont(font)) return font;
+    } catch (eValid) {}
+    try {
+        var fam = app.fontFamilies.itemByName(familyName);
+        if (fam && fam.isValid) {
+            var i;
+            for (i = 0; i < fam.fonts.length; i++) {
+                try {
+                    if (String(fam.fonts[i].fontStyleName) === String(styleName)) return fam.fonts[i];
+                } catch (eN) {}
+            }
+            if (styleWasDefault && fam.fonts.length === 1) return fam.fonts[0];
+        }
+    } catch (eFamily) {}
+    return null;
+}
+
+function readFontProps(styleObj) {
+    var family = null;
+    var styleName = null;
+    var current = styleObj;
+    var guard = 0;
+    var seen = {};
+    while (current && guard < 24) {
+        guard++;
+        var id = "";
+        try { id = String(current.id); } catch (eId) { break; }
+        if (!id || seen[id]) break;
+        seen[id] = true;
+        try { if (!current.isValid) break; } catch (eValid) { break; }
+        if (!family) {
+            try {
+                var applied = current.appliedFont;
+                if (!isNothingValue(applied)) family = applied;
+            } catch (eApplied) {}
+        }
+        if (!styleName) {
+            try {
+                var fontStyle = current.fontStyle;
+                if (!isNothingValue(fontStyle)) styleName = String(fontStyle);
+            } catch (eFontStyle) {}
+        }
+        if (family && styleName) break;
+        var parent = null;
+        try { parent = current.basedOn; } catch (eBase) { parent = null; }
+        if (!parent || isNothingValue(parent)) break;
+        try { if (!parent.isValid) break; } catch (eParent) { break; }
+        current = parent;
+    }
+    return { family: family, styleName: styleName };
+}
+
+function fontFromProps(props) {
+    if (!props || !props.family) return null;
+    return resolveNamedFont(props.family, props.styleName);
+}
+
+function collectionLength(collection) {
+    try { return collection.length; } catch (eLen) { return 0; }
+}
+
+function fontPropsLabel(props, hostFonts) {
+    var familyName = "";
+    if (props && props.family) {
+        try {
+            if (looksLikeFont(props.family)) familyName = String(props.family.fontFamily);
+            else familyName = String(props.family);
+        } catch (eFam) { familyName = ""; }
+    }
+    if (!familyName && hostFonts && hostFonts.length > 0) {
+        try { familyName = String(hostFonts[0].fontFamily); } catch (eHost) { familyName = ""; }
+    }
+    if (props && props.styleName) {
+        if (familyName) return familyName + " " + props.styleName;
+        return String(props.styleName);
+    }
+    return familyName;
+}
+
+function createFontBucket(onExtra) {
+    return {
+        fonts: [],
+        seen: {},
+        unresolved: [],
+        unresolvedSeen: {},
+        ok: true,
+        error: "",
+        onExtra: onExtra
+    };
+}
+
+function bucketAddFont(bucket, font, via) {
+    if (!looksLikeFont(font)) return false;
+    var key = "";
+    try { key = String(font.name); } catch (eKey) { return false; }
+    if (!key) return false;
+    if (bucket.seen[key]) return true;
+    try {
+        if (font.isValid === false) return false;
+    } catch (eValid) {}
+    bucket.seen[key] = true;
+    bucket.fonts.push(font);
+    if (via && via !== "doc" && bucket.onExtra) {
+        try { bucket.onExtra(via, key); } catch (eNote) {}
+    }
+    return true;
+}
+
+function bucketAddUnresolved(bucket, label) {
+    var text = "";
+    try { text = String(label || ""); } catch (eLabel) { text = ""; }
+    if (!text || text === "NothingEnum.NOTHING" || bucket.unresolvedSeen[text]) return;
+    bucket.unresolvedSeen[text] = true;
+    bucket.unresolved.push(text);
+}
+
+function addCharStyle(bucket, charStyle, hostFonts, via) {
+    if (!charStyle || isNothingValue(charStyle)) return;
+    try { if (!charStyle.isValid) return; } catch (eValid) { return; }
+    try {
+        if (String(charStyle.name) === "[None]") return;
+    } catch (eName) {}
+    if (!hostFonts) hostFonts = [];
+    var props = readFontProps(charStyle);
+    if (!props.family && !props.styleName) return;
+    if (props.family) {
+        var named = resolveNamedFont(props.family, props.styleName);
+        if (named) bucketAddFont(bucket, named, via);
+        else bucketAddUnresolved(bucket, fontPropsLabel(props, hostFonts));
+        return;
+    }
+    var found = false;
+    var h;
+    for (h = 0; h < hostFonts.length; h++) {
+        var styled = resolveNamedFont(hostFonts[h], props.styleName);
+        if (styled) {
+            bucketAddFont(bucket, styled, via);
+            found = true;
+        }
+    }
+    if (!found) bucketAddUnresolved(bucket, fontPropsLabel(props, hostFonts));
+}
+
+function collectNested(collection, hostFonts, via, bucket) {
+    var n = collectionLength(collection);
+    var i;
+    for (i = 0; i < n; i++) {
+        var cs = null;
+        try { cs = collection[i].appliedCharacterStyle; } catch (eCs) { cs = null; }
+        addCharStyle(bucket, cs, hostFonts, via);
+    }
+}
+
+function collectListFonts(styleObj, hostFonts, bucket) {
+    var listType = null;
+    try { listType = styleObj.bulletsAndNumberingListType; } catch (eList) { return; }
+    var cs = null;
+    var via = "";
+    try {
+        if (listType === ListType.BULLET_LIST) {
+            cs = styleObj.bulletsCharacterStyle;
+            via = "bullets";
+        } else if (listType === ListType.NUMBERED_LIST) {
+            cs = styleObj.numberingCharacterStyle;
+            via = "numbering";
+        }
+    } catch (eCs) { return; }
+    if (cs) addCharStyle(bucket, cs, hostFonts, via);
+}
+
+function collectStyleExtras(styleObj, hostFonts, bucket) {
+    var current = styleObj;
+    var guard = 0;
+    var seen = {};
+    var first = true;
+    while (current && guard < 24) {
+        guard++;
+        var id = "";
+        try { id = String(current.id); } catch (eId) { break; }
+        if (!id || seen[id]) break;
+        seen[id] = true;
+        try { if (!current.isValid) break; } catch (eValid) { break; }
+        if (first) {
+            collectListFonts(current, hostFonts, bucket);
+            first = false;
+        }
+        collectNested(current.nestedGrepStyles, hostFonts, "grep", bucket);
+        collectNested(current.nestedStyles, hostFonts, "nested", bucket);
+        collectNested(current.nestedLineStyles, hostFonts, "line", bucket);
+        var parent = null;
+        try { parent = current.basedOn; } catch (eBase) { parent = null; }
+        if (!parent || isNothingValue(parent)) break;
+        try { if (!parent.isValid) break; } catch (eParent) { break; }
+        current = parent;
+    }
+}
+
+function styleHasExtras(styleObj) {
+    var current = styleObj;
+    var guard = 0;
+    var seen = {};
+    while (current && guard < 24) {
+        guard++;
+        var id = "";
+        try { id = String(current.id); } catch (eId) { break; }
+        if (!id || seen[id]) break;
+        seen[id] = true;
+        try { if (!current.isValid) break; } catch (eValid) { break; }
+        if (collectionLength(current.nestedGrepStyles) > 0) return true;
+        if (collectionLength(current.nestedStyles) > 0) return true;
+        if (collectionLength(current.nestedLineStyles) > 0) return true;
+        try {
+            var listType = current.bulletsAndNumberingListType;
+            if (listType === ListType.BULLET_LIST || listType === ListType.NUMBERED_LIST) return true;
+        } catch (eList) {}
+        var parent = null;
+        try { parent = current.basedOn; } catch (eBase) { parent = null; }
+        if (!parent || isNothingValue(parent)) break;
+        try { if (!parent.isValid) break; } catch (eParent) { break; }
+        current = parent;
+    }
+    return false;
+}
+
+function paragraphHasExtras(paragraph, paragraphStyle) {
+    if (collectionLength(paragraph.nestedGrepStyles) > 0) return true;
+    if (collectionLength(paragraph.nestedStyles) > 0) return true;
+    if (collectionLength(paragraph.nestedLineStyles) > 0) return true;
+    if (paragraphStyle && styleHasExtras(paragraphStyle)) return true;
+    return false;
+}
+
+function paragraphHasText(paragraph) {
+    try {
+        var contents = String(paragraph.contents || "");
+        contents = contents.split(String.fromCharCode(13)).join("");
+        contents = contents.split(String.fromCharCode(10)).join("");
+        return contents.length > 0;
+    } catch (eContents) {
+        return false;
+    }
+}
+
+function fontsOnText(paragraph, bucket) {
+    var list = [];
+    var seenLocal = {};
+    function push(font) {
+        if (!looksLikeFont(font)) return;
+        var key = "";
+        try { key = String(font.name); } catch (eKey) { return; }
+        if (!key || seenLocal[key]) return;
+        seenLocal[key] = true;
+        list.push(font);
+        bucketAddFont(bucket, font, "text");
+    }
+    function pushApplied(applied) {
+        if (!looksLikeFont(applied)) return false;
+        push(applied);
+        return true;
+    }
+    var uniform = false;
+    try {
+        uniform = pushApplied(paragraph.appliedFont);
+    } catch (eDirect) { uniform = false; }
+    if (uniform) return list;
+    try {
+        var ranges = paragraph.textStyleRanges.everyItem().getElements();
+        var r;
+        for (r = 0; r < ranges.length; r++) {
+            try { pushApplied(ranges[r].appliedFont); } catch (eRange) {}
+        }
+    } catch (eRanges) {}
+    return list;
+}
+
+function visitParagraphBody(paragraph, bucket) {
+    var paragraphStyle = null;
+    try { paragraphStyle = paragraph.appliedParagraphStyle; } catch (ePs) { paragraphStyle = null; }
+    try {
+        if (paragraphStyle && !paragraphStyle.isValid) paragraphStyle = null;
+    } catch (eStyleValid) { paragraphStyle = null; }
+
+    var extras = paragraphHasExtras(paragraph, paragraphStyle);
+    if (!paragraphHasText(paragraph) && !extras) return;
+
+    var hostFonts = fontsOnText(paragraph, bucket);
+    if (hostFonts.length === 0 && paragraphStyle) {
+        var fallback = fontFromProps(readFontProps(paragraphStyle));
+        if (fallback) {
+            bucketAddFont(bucket, fallback, "paragraph-style");
+            hostFonts = [fallback];
+        }
+    }
+    if (paragraphStyle) collectStyleExtras(paragraphStyle, hostFonts, bucket);
+    collectNested(paragraph.nestedGrepStyles, hostFonts, "grep", bucket);
+    collectNested(paragraph.nestedStyles, hostFonts, "nested", bucket);
+    collectNested(paragraph.nestedLineStyles, hostFonts, "line", bucket);
+}
+
+function paragraphsOf(story) {
+    try {
+        return story.paragraphs.everyItem().getElements();
+    } catch (eEvery) {}
+    var list = [];
+    var i;
+    var n = 0;
+    try { n = story.paragraphs.length; } catch (eLen) { return list; }
+    for (i = 0; i < n; i++) {
+        try { list.push(story.paragraphs[i]); } catch (eItem) {}
+    }
+    return list;
+}
+
+function rememberStory(story, seenStories, stories) {
+    if (!story) return;
+    var id = "";
+    try { id = String(story.id); } catch (eId) { return; }
+    if (!id || seenStories[id]) return;
+    seenStories[id] = true;
+    stories.push(story);
+}
+
+function absorbSpread(spread, seenStories, stories) {
+    var items = null;
+    try { items = spread.allPageItems; } catch (eItems) { items = null; }
+    if (!items) return;
+    var i;
+    for (i = 0; i < items.length; i++) {
+        try {
+            if (!(items[i] instanceof TextFrame)) continue;
+        } catch (eInst) { continue; }
+        try { rememberStory(items[i].parentStory, seenStories, stories); } catch (eStory) {}
+    }
+}
+
+function collectFontsFromStories(doc, bucket) {
+    var seenStories = {};
+    var stories = [];
+    var i;
+    try {
+        for (i = 0; i < doc.stories.length; i++) rememberStory(doc.stories[i], seenStories, stories);
+    } catch (eStories) {
+        bucket.ok = false;
+        if (!bucket.error) bucket.error = String(eStories);
+    }
+    try {
+        for (i = 0; i < doc.spreads.length; i++) absorbSpread(doc.spreads[i], seenStories, stories);
+    } catch (eSpreads) {}
+    try {
+        for (i = 0; i < doc.masterSpreads.length; i++) absorbSpread(doc.masterSpreads[i], seenStories, stories);
+    } catch (eMasters) {}
+
+    var s;
+    for (s = 0; s < stories.length; s++) {
+        var paragraphs = paragraphsOf(stories[s]);
+        var p;
+        for (p = 0; p < paragraphs.length; p++) {
+            try {
+                visitParagraphBody(paragraphs[p], bucket);
+            } catch (eParagraph) {
+                bucket.ok = false;
+                if (!bucket.error) bucket.error = String(eParagraph);
+            }
+        }
+    }
+}
+
+function collectUsedFonts(doc, onExtra) {
+    var bucket = createFontBucket(onExtra);
+    var i;
+    try {
+        for (i = 0; i < doc.fonts.length; i++) {
+            if (!bucketAddFont(bucket, doc.fonts[i], "doc")) {
+                bucket.ok = false;
+                if (!bucket.error) bucket.error = "doc.fonts item skipped";
+                try {
+                    if (doc.fonts[i]) bucket.fonts.push(doc.fonts[i]);
+                } catch (ePush) {}
+            }
+        }
+    } catch (eDocFonts) {
+        bucket.ok = false;
+        bucket.error = String(eDocFonts);
+    }
+    try {
+        collectFontsFromStories(doc, bucket);
+    } catch (eWalk) {
+        bucket.ok = false;
+        if (!bucket.error) bucket.error = String(eWalk);
+    }
+    return bucket;
+}
+
 // [pack.hero#link]: ферма подставит картинку из value set, PPI плейсхолдера не важен.
 function nameLooksLikeLinkVariable(name) {
     var n = String(name || "");
@@ -2592,8 +3041,12 @@ if (packagedLayout) {
     var usedFontLower = {};
     var fontSetComplete = true;
     try {
-        for (pkgI = 0; pkgI < doc.fonts.length; pkgI++) {
-            var pkgFont = doc.fonts[pkgI];
+        var collectedFonts = collectUsedFonts(doc, null);
+        if (!collectedFonts.ok || collectedFonts.unresolved.length > 0) {
+            fontSetComplete = false;
+        }
+        for (pkgI = 0; pkgI < collectedFonts.fonts.length; pkgI++) {
+            var pkgFont = collectedFonts.fonts[pkgI];
             if (preparatorFontIsMissing(pkgFont) || preparatorFontIsComposite(pkgFont)) {
                 fontSetComplete = false;
                 continue;
