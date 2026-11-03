@@ -97,7 +97,9 @@ try {
   if ($targets.Count -eq 0) { $targets = @($panels | Sort-Object FullName -Descending | Select-Object -First 1) }
 
   $subdir = if ($m.panelSubdir) { [string]$m.panelSubdir } else { 'Design Terminal Git' }
-  $legacySubdirs = @('DT Scripts GitHub Auto')
+  # Чужие папки: старое имя набора рядом с kit и мусор "0"/"1" от старого
+  # апдейтера (туда попадало значение windowsOnly).
+  $legacySubdirs = @('DT Scripts GitHub Auto', '0', '1')
   Add-Note ("kitUpdatedAt={0}" -f $m.updatedAt)
   Add-Note ("panelSubdir={0}" -f $subdir)
   Add-Note ("technicalFolder={0}" -f $techFolder)
@@ -164,9 +166,19 @@ try {
 
     foreach ($legacy in $legacySubdirs) {
       $legacyPath = Join-Path $panel.FullName $legacy
-      if ((Test-Path -LiteralPath $legacyPath) -and ($legacy -ne $subdir)) {
+      if ((Test-Path -LiteralPath $legacyPath) -and ($legacy -ne $subdir) -and ($legacy -ne $techFolder)) {
         Remove-Item -LiteralPath $legacyPath -Recurse -Force
-        Add-Note "Removed legacy folder: $legacy"
+        Add-Note "Removed stray folder: $legacy"
+      }
+    }
+
+    # Тот же мусор "0"/"1" внутри kit.
+    foreach ($stray in @('0', '1')) {
+      if ($stray -eq $subdir -or $stray -eq $techFolder) { continue }
+      $strayPath = Join-Path $target $stray
+      if (Test-Path -LiteralPath $strayPath) {
+        Remove-Item -LiteralPath $strayPath -Recurse -Force
+        Add-Note "Removed stray subfolder: $stray"
       }
     }
   }

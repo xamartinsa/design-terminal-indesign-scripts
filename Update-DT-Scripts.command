@@ -246,10 +246,19 @@ for panel in "${TARGETS[@]}"; do
     done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0)
   done
 
-  for legacy in "DT Scripts GitHub Auto"; do
-    if [[ "$legacy" != "$SUBDIR" && -d "$panel/$legacy" ]]; then
+  # Чужие папки: старое имя набора рядом с kit и мусор "0"/"1" от старого
+  # апдейтера (туда попадало значение windowsOnly).
+  for legacy in "DT Scripts GitHub Auto" "0" "1"; do
+    if [[ "$legacy" != "$SUBDIR" && "$legacy" != "$TECH_FOLDER" && -d "$panel/$legacy" ]]; then
       rm -rf "$panel/$legacy"
-      log_line "Removed legacy folder: $legacy"
+      log_line "Removed stray folder: $legacy"
+    fi
+  done
+  # Тот же мусор внутри kit.
+  for stray in "0" "1"; do
+    if [[ "$stray" != "$SUBDIR" && "$stray" != "$TECH_FOLDER" && -d "$target/$stray" ]]; then
+      rm -rf "$target/$stray"
+      log_line "Removed stray subfolder: $stray"
     fi
   done
 done
