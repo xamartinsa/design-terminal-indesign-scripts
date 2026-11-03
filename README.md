@@ -75,7 +75,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - Preporator-1.108  
 - Legaler-1.15  
 - Croper-6.5  
-- Syncer-1.3  
+- Syncer-1.4  
 - Saver-1.0  
 - Publisher-1.0 (Windows; нужны Python + один раз `login.bat`)
 

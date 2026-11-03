@@ -1,6 +1,6 @@
 ﻿#target "indesign"
 
-// Syncer-1.3.jsx
+// Syncer-1.4.jsx
 // Синкер: картинки в Links + шрифты в Document fonts рядом с INDD.
 // Relink картинкам; шрифтам relink не нужен — InDesign берёт по имени.
 // 1.1: встроенный QR не ошибка; шрифты из Windows Fonts копирует запасным путём;
@@ -9,6 +9,9 @@
 // Только временная папка: %TEMP%\DesignTerminal\syncer.log. Рядом с макетом не пишет.
 // 1.3: шрифт ещё с текста и из GREP, вложенных стилей, буллетов и нумерации.
 // doc.fonts его не показывает, если стиль задаёт лицо, а GREP — только кегль.
+// 1.4: два разных линка с одинаковым именем файла больше не схлопываются в один
+// файл в Links. Второй (и далее) копируется как name-2.ext и на него делается relink.
+// На повторе прогона имена уже другие — второй раз не переименовывает.
 
 (function () {
     if (app.documents.length === 0) {
@@ -273,6 +276,7 @@
     var linkRemoved = 0;
     var linkErrors = [];
     var linkMissing = [];
+    var linkRenamed = [];
 
     function noteLinkCollisions() {
         var groups = {};
@@ -296,10 +300,57 @@
         for (i = 0; i < order.length; i++) {
             var list = groups[order[i]];
             if (list.length < 2) continue;
-            note("COLLISION same name x" + list.length);
+            note("COLLISION same name x" + list.length + " " + order[i] + " (копии разведу по именам)");
             var j;
             for (j = 0; j < list.length; j++) note("  " + list[j]);
         }
+    }
+
+    // Свободное имя в Links для второго линка с тем же именем:
+    // hero.jpg → hero-2.jpg, hero-3.jpg. Занятые имена (в том числе исходные
+    // имена других линков) не берём.
+    function uniqueDestName(baseName, claimedBy) {
+        var dot = baseName.lastIndexOf(".");
+        var stem = baseName;
+        var ext = "";
+        if (dot > 0) {
+            stem = baseName.substring(0, dot);
+            ext = baseName.substring(dot);
+        }
+        var n = 2;
+        while (n < 10000) {
+            var candidate = stem + "-" + n + ext;
+            if (!claimedBy[candidate.toLowerCase()]) {
+                return candidate;
+            }
+            n++;
+        }
+        return stem + "-" + (new Date().getTime()) + ext;
+    }
+
+    // Первый линк с таким именем оставляем как есть, каждому следующему даём
+    // новое имя. Счётчик seenNames — по «копируемым» линкам прогона.
+    function destNameForLink(linkName, claimedBy, seenNames) {
+        var key = linkName.toLowerCase();
+        var seen = seenNames[key] || 0;
+        seenNames[key] = seen + 1;
+        if (seen === 0) {
+            return linkName;
+        }
+        return uniqueDestName(linkName, claimedBy);
+    }
+
+    function copyLinkAsFile(link, destPath) {
+        var srcPath = "";
+        try { srcPath = String(link.filePath); } catch (eSrc) { srcPath = ""; }
+        if (!srcPath) return false;
+        var src = new File(decodeURI(srcPath));
+        try {
+            if (!src.exists) return false;
+        } catch (eEx) {
+            return false;
+        }
+        return copyOneFile(src, destPath);
     }
 
     function noteLinksAfter() {
@@ -330,22 +381,41 @@
         noteLinkCollisions();
 
         var usedFiles = {};
+        var claimedBy = {};
+        var seenNames = {};
+        var pathToDest = {};
+        var srcPaths = {};
         var allLinks = doc.links;
         var i;
+
+        // Все имена линков заранее «заняты»: авто-имя hero-2 не должно затирать
+        // реальный линк, который уже называется hero-2.
+        for (i = 0; i < allLinks.length; i++) {
+            try {
+                claimedBy[decodeURI(allLinks[i].name).toLowerCase()] = true;
+            } catch (eSeed) {}
+            try {
+                var seedPath = allLinks[i].filePath;
+                if (seedPath) {
+                    srcPaths[normalizePath(seedPath)] = true;
+                }
+            } catch (eSeedPath) {}
+        }
 
         for (i = 0; i < allLinks.length; i++) {
             var link = allLinks[i];
             var linkName = decodeURI(link.name);
-            usedFiles[linkName.toLowerCase()] = linkName;
             note("link " + linkName + " [" + linkStatusName(link) + "]");
 
             if (isEmbeddedLink(link)) {
+                usedFiles[linkName.toLowerCase()] = linkName;
                 note("  action embedded");
                 continue;
             }
 
             try {
                 if (link.status === LinkStatus.LINK_MISSING || link.status === LinkStatus.LINK_INACCESSIBLE) {
+                    usedFiles[linkName.toLowerCase()] = linkName;
                     linkMissing.push(linkName);
                     note("  action missing");
                     continue;
@@ -356,32 +426,74 @@
             try {
                 currentPath = normalizePath(link.filePath);
             } catch (ePath) {
+                usedFiles[linkName.toLowerCase()] = linkName;
                 linkErrors.push(linkName + " — нет пути");
                 note("  action no-path");
                 continue;
             }
             note("  from " + currentPath);
 
-            var correctPath = normalizePath(linksFolder.fsName + "/" + link.name);
-            if (currentPath === correctPath) {
+            // Один и тот же исходный файл на двух линках — это не коллизия:
+            // второй линк relink-им на тот же файл в Links, копию не плодим.
+            var reuseName = pathToDest[currentPath];
+            var destName;
+            if (reuseName) {
+                destName = reuseName;
+                note("  reuse " + destName + " (тот же исходник)");
+            } else {
+                destName = destNameForLink(linkName, claimedBy, seenNames);
+                if (destName.toLowerCase() !== linkName.toLowerCase()) {
+                    note("  rename " + linkName + " -> " + destName);
+                    linkRenamed.push(linkName + " → " + destName);
+                }
+                claimedBy[destName.toLowerCase()] = true;
+                pathToDest[currentPath] = destName;
+            }
+            usedFiles[destName.toLowerCase()] = destName;
+
+            var destFile = new File(linksFolder.fsName + "/" + destName);
+            if (currentPath === normalizePath(destFile.fsName)) {
                 note("  action already");
                 continue;
             }
 
             try {
-                var existingFile = new File(linksFolder.fsName + "/" + link.name);
-                if (existingFile.exists && normalizePath(existingFile.fsName) !== currentPath) {
-                    note("  removed-dest " + existingFile.fsName);
-                    existingFile.remove();
+                if (reuseName && destFile.exists) {
+                    // уже скопирован в этом прогоне, только relink
+                    link.relink(destFile);
+                    link.update();
+                    linkCopied++;
+                    note("  action relinked");
+                    note("  to " + destFile.fsName);
+                    continue;
                 }
-                link.copyLink(linksFolder.fsName);
-                var newFile = new File(linksFolder.fsName + "/" + link.name);
-                if (newFile.exists) {
-                    link.relink(newFile);
+                if (destFile.exists) {
+                    if (srcPaths[normalizePath(destFile.fsName)]) {
+                        // этот файл — исходник другого линка, не сносим: положим новую копию рядом
+                        note("  keep-dest " + destFile.fsName + " (исходник другого линка)");
+                        note("  action copy-failed");
+                        linkErrors.push(linkName + " — имя занято, файл не перезаписан");
+                        continue;
+                    }
+                    note("  removed-dest " + destFile.fsName);
+                    destFile.remove();
+                }
+                var placed = false;
+                if (destName.toLowerCase() === linkName.toLowerCase()) {
+                    // как раньше: нативный copyLink кладёт под link.name
+                    link.copyLink(linksFolder.fsName);
+                    placed = destFile.exists;
+                }
+                if (!placed) {
+                    // переименование (или нативный copyLink не сработал): байтовая копия
+                    placed = copyLinkAsFile(link, destFile.fsName);
+                }
+                if (destFile.exists) {
+                    link.relink(destFile);
                     link.update();
                     linkCopied++;
                     note("  action copied");
-                    note("  to " + newFile.fsName);
+                    note("  to " + destFile.fsName);
                 } else {
                     linkErrors.push(linkName + " — не скопировался");
                     note("  action copy-failed");
@@ -1125,7 +1237,7 @@
         }
     }
 
-    note("---- " + stamp() + " Syncer 1.3 ----");
+    note("---- " + stamp() + " Syncer 1.4 ----");
     note("doc " + docFile.fsName);
     try {
         syncLinks();
@@ -1150,10 +1262,21 @@
     if (linkCopied > 0) {
         lines.push("  скопировано: " + linkCopied);
     }
+    if (linkRenamed.length > 0) {
+        lines.push("  переименовано из-за одинаковых имён: " + linkRenamed.length);
+        var lr;
+        for (lr = 0; lr < linkRenamed.length && lr < 8; lr++) {
+            lines.push("  " + linkRenamed[lr]);
+        }
+        if (linkRenamed.length > 8) {
+            lines.push("  … ещё " + (linkRenamed.length - 8));
+        }
+    }
     if (linkRemoved > 0) {
         lines.push("  удалено лишних: " + linkRemoved);
     }
-    if (linkCopied === 0 && linkRemoved === 0 && linkErrors.length === 0 && linkMissing.length === 0) {
+    if (linkCopied === 0 && linkRemoved === 0 && linkRenamed.length === 0 &&
+        linkErrors.length === 0 && linkMissing.length === 0) {
         lines.push("✓ Ok");
     }
     if (linkMissing.length > 0) {
