@@ -97,9 +97,8 @@ try {
   if ($targets.Count -eq 0) { $targets = @($panels | Sort-Object FullName -Descending | Select-Object -First 1) }
 
   $subdir = if ($m.panelSubdir) { [string]$m.panelSubdir } else { 'Design Terminal Git' }
-  # Чужие папки: старое имя набора рядом с kit и мусор "0"/"1" от старого
-  # апдейтера (туда попадало значение windowsOnly).
-  $legacySubdirs = @('DT Scripts GitHub Auto', '0', '1')
+  # Старое имя набора рядом с kit.
+  $legacySubdirs = @('DT Scripts GitHub Auto')
   Add-Note ("kitUpdatedAt={0}" -f $m.updatedAt)
   Add-Note ("panelSubdir={0}" -f $subdir)
   Add-Note ("technicalFolder={0}" -f $techFolder)
@@ -141,6 +140,12 @@ try {
       $destDir = if ($folder) { Join-Path $target $folder } else { $target }
       New-Item -ItemType Directory -Path $destDir -Force | Out-Null
       Copy-Item -LiteralPath $downloaded[$f.name] -Destination (Join-Path $destDir $f.name) -Force
+      $destFile = Join-Path $destDir $f.name
+      if (Test-Path -LiteralPath $destFile) {
+        Add-Note ("  place {0}" -f $destFile)
+      } else {
+        Add-Note ("  PLACE-MISSING after copy: {0}" -f $destFile)
+      }
       Add-Keep $keep $folder $f.name
       if ($folder) { Add-Keep $keep '' $folder }
     }
@@ -172,13 +177,29 @@ try {
       }
     }
 
-    # Тот же мусор "0"/"1" внутри kit.
+    # Тот же мусор "0"/"1" внутри kit. Но только если корневые скрипты уже на месте:
+    # у старого апдейтера живые скрипты могли лежать внутри "0"/"1", не сносим их,
+    # пока в корне нет ни одного .jsx из манифеста.
+    $rootJsx = 0
+    foreach ($f in $m.files) {
+      if (Test-WindowsOnly $f) { continue }
+      if (Get-PanelFolder $f) { continue }
+      if (Test-Path -LiteralPath (Join-Path $target $f.name)) {
+        $rootJsx++
+      } else {
+        Add-Note ("  MISSING in root: {0}" -f $f.name)
+      }
+    }
+    Add-Note ("  root jsx present: {0}" -f $rootJsx)
     foreach ($stray in @('0', '1')) {
       if ($stray -eq $subdir -or $stray -eq $techFolder) { continue }
       $strayPath = Join-Path $target $stray
-      if (Test-Path -LiteralPath $strayPath) {
+      if (!(Test-Path -LiteralPath $strayPath)) { continue }
+      if ($rootJsx -gt 0) {
         Remove-Item -LiteralPath $strayPath -Recurse -Force
         Add-Note "Removed stray subfolder: $stray"
+      } else {
+        Add-Note "  KEPT stray subfolder $stray (root has no kit scripts yet)"
       }
     }
   }

@@ -120,7 +120,10 @@ for (const f of (m.files || [])) {
     f.id || "",
     f.name || "",
     String(f.sha256 || "").toLowerCase(),
-    f.panelFolder || "",
+    // "-" вместо пустого panelFolder: bash с IFS=$'\t' схлопывает пустые
+    // поля, и тогда windowsOnly ("0"/"1") съезжает в колонку папки —
+    // отсюда папки "0"/"1" у старого набора.
+    f.panelFolder || "-",
     f.windowsOnly ? "1" : "0",
     encodeURIComponent(f.name || "")
   ].join("\t"));
@@ -192,7 +195,11 @@ keep_has() {
   local file="$1"
   local folder="$2"
   local name="$3"
-  awk -F '\t' -v f="$folder" -v n="$name" '$1==f && $2==n { found=1 } END { exit !found }' "$file"
+  # В KEEP корень записан как "-": bash с IFS=$'\t' схлопывает пустые поля,
+  # и без плейсхолдера пары (папка, имя) на корневых файлах разъезжаются.
+  local key="$folder"
+  [[ -z "$key" ]] && key="-"
+  awk -F '\t' -v f="$key" -v n="$name" '$1==f && $2==n { found=1 } END { exit !found }' "$file"
 }
 
 for panel in "${TARGETS[@]}"; do
@@ -202,26 +209,49 @@ for panel in "${TARGETS[@]}"; do
   log_line "Target: $target"
   KEEP="$TMP/keep-$(echo "$target" | shasum -a 256 | awk '{ print $1 }').tsv"
   : > "$KEEP"
-  printf '%s\t%s\n' "" "$TECH_FOLDER" >> "$KEEP"
+  printf '%s\t%s\n' "-" "$TECH_FOLDER" >> "$KEEP"
   printf '%s\t%s\n' "$TECH_FOLDER" "_update-last.log" >> "$KEEP"
 
   while IFS=$'\t' read -r id name sha folder winonly encoded; do
     [[ -n "${name:-}" ]] || continue
     if [[ "${winonly:-0}" == "1" ]]; then
+      log_line "  skip $id (Windows only)"
       continue
     fi
     dest_dir="$target"
+    [[ "$folder" == "-" ]] && folder=""
     if [[ -n "${folder:-}" ]]; then
       dest_dir="$target/$folder"
-      printf '%s\t%s\n' "" "$folder" >> "$KEEP"
+      printf '%s\t%s\n' "-" "$folder" >> "$KEEP"
     fi
     mkdir -p "$dest_dir"
-    cp -f "$TMP/$name" "$dest_dir/$name"
-    printf '%s\t%s\n' "${folder:-}" "$name" >> "$KEEP"
+    if cp -f "$TMP/$name" "$dest_dir/$name"; then
+      if [[ -f "$dest_dir/$name" ]]; then
+        log_line "  place $dest_dir/$name"
+      else
+        log_line "  PLACE-MISSING after cp: $dest_dir/$name"
+      fi
+    else
+      log_line "  PLACE-FAILED cp $name -> $dest_dir"
+    fi
+    if [[ -n "${folder:-}" ]]; then
+      printf '%s\t%s\n' "$folder" "$name" >> "$KEEP"
+    else
+      printf '%s\t%s\n' "-" "$name" >> "$KEEP"
+    fi
   done < <(tail -n +2 "$MAP_FILE")
 
+  # Что реально лежит в корне kit до чистки — чтобы разбирать, если у человека
+  # скрипты «не появились».
+  log_line "  root before cleanup:"
+  if [[ -d "$target" ]]; then
+    while IFS= read -r -d '' before; do
+      log_line "    $(basename "$before")"
+    done < <(find "$target" -mindepth 1 -maxdepth 1 -print0)
+  fi
+
   # Managed folder: drop Archive, barcode, old preparators, leftover root files.
-  folders=("")
+  folders=("-")
   while IFS=$'\t' read -r folder name; do
     [[ -n "$folder" ]] || continue
     skip=0
@@ -233,7 +263,7 @@ for panel in "${TARGETS[@]}"; do
 
   for folder in "${folders[@]}"; do
     dir="$target"
-    [[ -n "$folder" ]] && dir="$target/$folder"
+    if [[ "$folder" != "-" ]]; then dir="$target/$folder"; fi
     [[ -d "$dir" ]] || continue
     while IFS= read -r -d '' item; do
       base="$(basename "$item")"
@@ -246,21 +276,43 @@ for panel in "${TARGETS[@]}"; do
     done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0)
   done
 
-  # Чужие папки: старое имя набора рядом с kit и мусор "0"/"1" от старого
-  # апдейтера (туда попадало значение windowsOnly).
-  for legacy in "DT Scripts GitHub Auto" "0" "1"; do
+  # Старое имя набора рядом с kit.
+  for legacy in "DT Scripts GitHub Auto"; do
     if [[ "$legacy" != "$SUBDIR" && "$legacy" != "$TECH_FOLDER" && -d "$panel/$legacy" ]]; then
       rm -rf "$panel/$legacy"
       log_line "Removed stray folder: $legacy"
     fi
   done
-  # Тот же мусор внутри kit.
-  for stray in "0" "1"; do
-    if [[ "$stray" != "$SUBDIR" && "$stray" != "$TECH_FOLDER" && -d "$target/$stray" ]]; then
-      rm -rf "$target/$stray"
-      log_line "Removed stray subfolder: $stray"
+  # Тот же мусор внутри kit. Но только если корневые скрипты уже на месте:
+  # у старого апдейтера живые скрипты могли лежать внутри "0"/"1", не сносим
+  # их, пока в корне не окажется хотя бы один .jsx из манифеста.
+  root_jsx=0
+  while IFS=$'\t' read -r id name sha folder winonly encoded; do
+    [[ -n "${name:-}" ]] || continue
+    [[ "${winonly:-0}" == "1" ]] && continue
+    [[ "$folder" == "-" ]] && folder=""
+    [[ -n "${folder:-}" ]] && continue
+    if [[ -f "$target/$name" ]]; then
+      root_jsx=$((root_jsx + 1))
+    else
+      log_line "  MISSING in root: $name"
     fi
-  done
+  done < <(tail -n +2 "$MAP_FILE")
+  log_line "  root jsx present: $root_jsx"
+  if [[ "$root_jsx" -gt 0 ]]; then
+    for stray in "0" "1"; do
+      if [[ "$stray" != "$SUBDIR" && "$stray" != "$TECH_FOLDER" && -d "$target/$stray" ]]; then
+        rm -rf "$target/$stray"
+        log_line "Removed stray subfolder: $stray"
+      fi
+    done
+  else
+    for stray in "0" "1"; do
+      if [[ -d "$target/$stray" ]]; then
+        log_line "  KEPT stray subfolder $stray (root has no kit scripts yet)"
+      fi
+    done
+  fi
 done
 
 STATUS="ok"
