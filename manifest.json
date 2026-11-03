@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-11-03T12:42:43Z",
+    "updatedAt":  "2026-11-03T12:50:03Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "technicalFolder":  "zzz Technical",
@@ -30,9 +30,9 @@
                   },
                   {
                       "id":  "SaveAsInddAndIdml",
-                      "name":  "Saver-1.0.jsx",
-                      "version":  "1.0",
-                      "sha256":  "20c94c96807e591810849d7f641573e78097abd27c053309754a7ddf64dd3593"
+                      "name":  "Saver-1.1.jsx",
+                      "version":  "1.1",
+                      "sha256":  "0a81d193d1e58c0d2e4aff636706b026ed46fb753bf34f23dd26a443eae69003"
                   },
                   {
                       "id":  "Publisher",
