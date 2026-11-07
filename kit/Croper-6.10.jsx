@@ -25,6 +25,8 @@
 // 6.9: без салюта и без «✓ Все ок». Кроп прошёл — сверху «✓ Cropped copy placed»,
 // пустая строка, строка картинки (имя, PPI, вес; при проблеме — ⚠ как у Preparator).
 // Окно обычное модальное, #targetengine больше не нужен.
+// 6.10: высота окна по тексту: строки × 18 + поля, не меньше 80 и не больше,
+// чем у Preparator (дальше — страницы < >). Ширина та же, 292.
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -42,7 +44,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.9";
+    var SCRIPT_VERSION = "6.10";
     var CROP_WINDOW_TITLE = "Image Cropper";
     var CROP_DONE_TEXT = "✓ Cropped copy placed";
     var ANGLE_EPS = 0.05;
@@ -1180,24 +1182,29 @@
         return name + "\nPPI " + ppi + " (" + required + "), " + formatFileSizeMb(fileSize);
     }
 
-    // Как dialogBoxMetrics у Preparator, но окно меньше: у кроппера пара строк.
-    function cropDialogMetrics() {
+    // Как dialogBoxMetrics у Preparator, но уже, а высота — по тексту:
+    // строки × lineH + padH (как считает страницы addPagedReportPane),
+    // не меньше 80 (минимум reportPaneHeight) и не больше блока Preparator.
+    function cropDialogMetrics(text) {
         var m = dialogBoxMetrics();
         var boxW = 260;
-        var maxH = 170;
-        var winH = maxH + 80;
+        var charsPerLine = Math.max(28, Math.floor(boxW / 7));
+        var lines = countVisualLines(String(text || "").replace(/\s+$/, ""), charsPerLine);
+        var paneH = lines * m.lineH + m.padH;
+        paneH = Math.max(80, Math.min(m.maxH + 8, paneH));
+        var contentH = paneH + 16;
         m.boxW = boxW;
-        m.maxH = maxH;
+        m.maxH = paneH - 8;
         m.winW = boxW + 32;
-        m.winH = winH;
-        m.contentH = winH - 16 - 8 - m.okRowH;
-        m.charsPerLine = Math.max(28, Math.floor(boxW / 7));
+        m.contentH = contentH;
+        m.winH = contentH + 16 + 8 + m.okRowH;
+        m.charsPerLine = charsPerLine;
         return m;
     }
 
     // showTabbedReportDialog из Preparator, только размеры cropDialogMetrics.
     function showCropReportDialog(text) {
-        var metrics = cropDialogMetrics();
+        var metrics = cropDialogMetrics(text);
         var w = new Window("dialog", CROP_WINDOW_TITLE);
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
