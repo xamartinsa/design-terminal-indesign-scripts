@@ -1,5 +1,4 @@
 ﻿#target "indesign"
-#targetengine "ImageCroperUI"
 
 // ImageCroper 6.3
 // Кроп выбранного image-фрейма через Photoshop (исходные пиксели).
@@ -23,6 +22,9 @@
 // Окно, салют и формат строки скопированы из Preparator 1.109 — тест сверяет.
 // 6.8: при успехе сверху та же строка картинки (имя, PPI, вес), под ней
 // «✓ Все ок» и салют. Окно меньше, чем у Preparator: 292×250 вместо 372×440.
+// 6.9: без салюта и без «✓ Все ок». Кроп прошёл — сверху «✓ Cropped copy placed»,
+// пустая строка, строка картинки (имя, PPI, вес; при проблеме — ⚠ как у Preparator).
+// Окно обычное модальное, #targetengine больше не нужен.
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -40,9 +42,9 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.8";
+    var SCRIPT_VERSION = "6.9";
     var CROP_WINDOW_TITLE = "Image Cropper";
-    var CROP_OK_TEXT = "✓ Все ок";
+    var CROP_DONE_TEXT = "✓ Cropped copy placed";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -232,11 +234,9 @@
             (cropReport ? "" : " ok"));
 
         writeTextLog(logFile, logLines);
-        if (cropReport) {
-            showCropReport(cropReport);
-        } else {
-            showCropOk(cropImageSummary(reportName, reportPpi, targetDpi, reportMb));
-        }
+        showCropReport(cropDoneText(
+            cropReport || cropImageSummary(reportName, reportPpi, targetDpi, reportMb)
+        ));
     } catch (e) {
         try {
             logLines.push("ERROR " + String(e.message || e));
@@ -1163,7 +1163,6 @@
 
     // Есть что сказать (ошибка или ⚠ по картинке) — окно отчёта с OK.
     function showCropReport(text) {
-        stopCropDance();
         try {
             showCropReportDialog(text);
         } catch (eWin) {
@@ -1171,16 +1170,9 @@
         }
     }
 
-    // Всё хорошо — сверху та же строка картинки, под ней «✓ Все ок» и салют.
-    function showCropOk(summary) {
-        stopCropDance();
-        try {
-            showCropOkDialog(summary);
-            return;
-        } catch (eDance) {
-            stopCropDance();
-        }
-        showCropReport(summary + "\n\n" + CROP_OK_TEXT + "\n");
+    // Кроп прошёл: «✓ Cropped copy placed», пустая строка, строка картинки.
+    function cropDoneText(imageLines) {
+        return CROP_DONE_TEXT + "\n\n" + String(imageLines || "").replace(/\s+$/, "") + "\n";
     }
 
     // Строка картинки, когда всё в норме: как у Preparator, только без ⚠.
@@ -1221,93 +1213,6 @@
         w.show();
     }
 
-    // showAllOkDanceDialog из Preparator: сверху строка картинки, под ней
-    // «✓ Все ок», ниже салют. Размеры cropDialogMetrics.
-    function showCropOkDialog(summary) {
-        stopCropDance();
-
-        var metrics = cropDialogMetrics();
-        var boxW = metrics.boxW;
-        // Строка картинки, одна пустая строка, «✓ Все ок» — одним текстом.
-        var topText = summary + "\n\n" + CROP_OK_TEXT;
-        var topH = Math.max(22, countVisualLines(topText, metrics.charsPerLine) * metrics.lineH);
-        var dancerH = Math.max(60, reportPaneHeight(metrics, false) - topH - 6);
-
-        var fwCols = Math.max(46, Math.floor(boxW / 5));
-        var fwRows = Math.max(8, Math.floor(dancerH / 12));
-        var sim = createFireworksSim(fwCols, fwRows);
-        var fwFrame = "";
-        var fwWarm;
-        for (fwWarm = 0; fwWarm < 2; fwWarm++) fwFrame = sim.step();
-
-        var w = new Window("palette", CROP_WINDOW_TITLE);
-        w.orientation = "column";
-        w.alignChildren = ["fill", "top"];
-        w.margins = 8;
-        w.spacing = 8;
-
-        var pane = w.add("group");
-        pane.orientation = "column";
-        pane.alignChildren = ["fill", "top"];
-        pane.alignment = ["fill", "top"];
-        pane.margins = metrics.paneMargins;
-        pane.spacing = 6;
-
-        var et = pane.add("statictext", undefined, topText, {multiline: true});
-        et.preferredSize = [boxW, topH];
-        et.alignment = ["fill", "top"];
-
-        var dancer = pane.add("statictext", undefined, fwFrame, {multiline: true});
-        dancer.preferredSize = [boxW, dancerH];
-        dancer.alignment = ["fill", "top"];
-        setMonoFont(dancer, 8);
-        try {
-            dancer.graphics.foregroundColor = dancer.graphics.newPen(
-                dancer.graphics.PenType.SOLID_COLOR,
-                [0.72, 0.32, 0.04],
-                1
-            );
-        } catch (eFg) {}
-
-        var okBtn = addDialogOkButton(w, metrics);
-        okBtn.onClick = function () {
-            stopCropDance();
-            w.close();
-        };
-        w.onClose = function () {
-            stopCropDance();
-            return true;
-        };
-
-        var task = app.idleTasks.add({
-            name: "ImageCroperDance",
-            sleep: 1
-        });
-        var fwPaceSet = false;
-        task.addEventListener("onIdle", function () {
-            try {
-                if (!w.visible) {
-                    stopCropDance();
-                    return;
-                }
-                if (!fwPaceSet) {
-                    fwPaceSet = true;
-                    task.sleep = 20;
-                }
-                dancer.text = sim.step();
-            } catch (eTick) {
-                stopCropDance();
-            }
-        });
-
-        applyFixedDialogSize(w, metrics);
-        w.center();
-        w.show();
-        try {
-            dancer.text = sim.step();
-        } catch (eKick) {}
-    }
-
     // Та же проверка картинки, что в Preparator (checkImagesOnPage):
     // ±15% от нормы; «высокий» — только если файл больше 15 МБ; вес — больше 18 МБ.
     function cropImageReport(name, ppi, required, fileSize) {
@@ -1336,7 +1241,7 @@
     }
 
     // ---- Окно отчёта: скопировано из Preparator 1.109, тест сверяет один в один ----
-    // Переименовано: заголовок → CROP_WINDOW_TITLE, stopPrepDance → stopCropDance.
+    // Салют Preparator в кроппер не берём (6.9).
     function countVisualLines(text, charsPerLine) {
         var rawLines = String(text || "").split("\n");
         var visualLines = 0;
@@ -1526,191 +1431,6 @@
         pane.spacing = 6;
         addPagedReportPane(pane, errorsText, metrics, reportPaneHeight(metrics, false));
         return pane;
-    }
-
-    function stopCropDance() {
-        try {
-            for (var i = app.idleTasks.length - 1; i >= 0; i--) {
-                if (String(app.idleTasks[i].name) === "ImageCroperDance") {
-                    app.idleTasks[i].remove();
-                }
-            }
-        } catch (eStop) {}
-    }
-
-    function fwRnd(a, b) {
-        return a + Math.random() * (b - a);
-    }
-
-    function createFireworksSim(cols, rows) {
-        var rockets = [];
-        var sparks = [];
-        var tick = 0;
-        var cooldown = 0;
-        var launched = 0;
-        var fastFirst = true;
-        var cellN = cols * rows;
-        var cells = [];
-        var prio = [];
-        var dirty = [];
-        var dirtyN = 0;
-        var ci;
-        for (ci = 0; ci < cellN; ci++) {
-            cells[ci] = " ";
-            prio[ci] = 0;
-        }
-
-        function spawnRocket() {
-            var vy = fwRnd(-1.2, -0.92);
-            if (fastFirst) {
-                vy = -3.4;
-                fastFirst = false;
-            }
-            rockets.push({
-                x: fwRnd(5, cols - 6),
-                y: rows - 1,
-                vy: vy,
-                peak: fwRnd(1, Math.max(4, rows * 0.52))
-            });
-        }
-
-        function explode(x, y) {
-            var n = 28 + Math.floor(Math.random() * 10);
-            var i, a, sp;
-            for (i = 0; i < n; i++) {
-                a = (i / n) * Math.PI * 2 + fwRnd(-0.15, 0.15);
-                sp = fwRnd(0.42, 0.95);
-                sparks.push({
-                    x: x,
-                    y: y,
-                    vx: Math.cos(a) * sp,
-                    vy: Math.sin(a) * sp * 0.82,
-                    life: 16 + Math.floor(fwRnd(0, 10)),
-                    maxLife: 26
-                });
-            }
-            for (i = 0; i < 14; i++) {
-                a = fwRnd(0, Math.PI * 2);
-                sp = fwRnd(0.12, 0.38);
-                sparks.push({
-                    x: x,
-                    y: y,
-                    vx: Math.cos(a) * sp,
-                    vy: Math.sin(a) * sp * 0.8,
-                    life: 10 + Math.floor(fwRnd(0, 8)),
-                    maxLife: 18
-                });
-            }
-        }
-
-        function clearGrid() {
-            var d, idx;
-            for (d = 0; d < dirtyN; d++) {
-                idx = dirty[d];
-                cells[idx] = " ";
-                prio[idx] = 0;
-            }
-            dirtyN = 0;
-        }
-
-        function plot(x, y, ch, priVal) {
-            var xi = Math.floor(x + 0.5);
-            var yi = Math.floor(y + 0.5);
-            if (xi < 0 || yi < 0 || xi >= cols || yi >= rows) return;
-            var idx = yi * cols + xi;
-            if (priVal >= prio[idx]) {
-                if (prio[idx] === 0) {
-                    dirty[dirtyN] = idx;
-                    dirtyN++;
-                }
-                cells[idx] = ch;
-                prio[idx] = priVal;
-            }
-        }
-
-        function render() {
-            var y, x, row, parts = [];
-            for (y = 0; y < rows; y++) {
-                row = [];
-                var base = y * cols;
-                for (x = 0; x < cols; x++) row[x] = cells[base + x];
-                parts[y] = row.join("");
-            }
-            return parts.join("\n");
-        }
-
-        function step() {
-            var i, r, s, t, ch, priVal;
-            tick++;
-            if (cooldown > 0) cooldown--;
-            if (cooldown <= 0 && rockets.length === 0 && sparks.length < 3) {
-                if (launched >= 5) {
-                    launched = 0;
-                    cooldown = 22;
-                } else {
-                    spawnRocket();
-                    launched++;
-                    cooldown = 18;
-                }
-            }
-
-            for (i = rockets.length - 1; i >= 0; i--) {
-                r = rockets[i];
-                r.y += r.vy;
-                r.vy += 0.004;
-                if (r.y <= r.peak) {
-                    explode(r.x, r.y);
-                    rockets.splice(i, 1);
-                    cooldown = 16;
-                }
-            }
-
-            for (i = sparks.length - 1; i >= 0; i--) {
-                s = sparks[i];
-                s.x += s.vx;
-                s.y += s.vy;
-                s.vy += 0.022;
-                s.vx *= 0.99;
-                s.life--;
-                if (s.life <= 0 || s.y >= rows) sparks.splice(i, 1);
-            }
-
-            clearGrid();
-
-            for (i = 0; i < rockets.length; i++) {
-                r = rockets[i];
-                plot(r.x, r.y, "^", 4);
-                plot(r.x, r.y + 1, "|", 3);
-                plot(r.x, r.y + 2, ":", 2);
-                plot(r.x, r.y + 3, ".", 1);
-            }
-
-            for (i = 0; i < sparks.length; i++) {
-                s = sparks[i];
-                t = s.life / (s.maxLife || 18);
-                ch = ".";
-                priVal = 1;
-                if (t > 0.78) { ch = "@"; priVal = 5; }
-                else if (t > 0.55) { ch = "*"; priVal = 4; }
-                else if (t > 0.35) { ch = "+"; priVal = 3; }
-                else if (t > 0.18) { ch = ":"; priVal = 2; }
-                plot(s.x, s.y, ch, priVal);
-            }
-
-            return render();
-        }
-
-        return { step: step };
-    }
-
-    function setMonoFont(control, size) {
-        try {
-            control.graphics.font = ScriptUI.newFont("Courier New", "REGULAR", size);
-            return;
-        } catch (e1) {}
-        try {
-            control.graphics.font = ScriptUI.newFont("Courier", "REGULAR", size);
-        } catch (e2) {}
     }
 
     function formatFileSizeMb(mb) {
