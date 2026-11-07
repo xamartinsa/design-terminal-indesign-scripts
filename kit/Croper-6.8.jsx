@@ -21,6 +21,8 @@
 // В шапке название скрипта, а не «Все ок». После кропа — строка картинки,
 // как её напишет Preparator (PPI, вес), или «✓ Все ок», если писать нечего.
 // Окно, салют и формат строки скопированы из Preparator 1.109 — тест сверяет.
+// 6.8: при успехе сверху та же строка картинки (имя, PPI, вес), под ней
+// «✓ Все ок» и салют. Окно меньше, чем у Preparator: 292×250 вместо 372×440.
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -38,8 +40,9 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.7";
+    var SCRIPT_VERSION = "6.8";
     var CROP_WINDOW_TITLE = "Image Cropper";
+    var CROP_OK_TEXT = "✓ Все ок";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -229,7 +232,11 @@
             (cropReport ? "" : " ok"));
 
         writeTextLog(logFile, logLines);
-        showCropReport(cropReport || "\u2713 \u0412\u0441\u0435 \u043e\u043a\n");
+        if (cropReport) {
+            showCropReport(cropReport);
+        } else {
+            showCropOk(cropImageSummary(reportName, reportPpi, targetDpi, reportMb));
+        }
     } catch (e) {
         try {
             logLines.push("ERROR " + String(e.message || e));
@@ -1154,21 +1161,151 @@
         showCropReport("⚠ " + body + "\n");
     }
 
+    // Есть что сказать (ошибка или ⚠ по картинке) — окно отчёта с OK.
     function showCropReport(text) {
         stopCropDance();
-        if (reportIsAllOk(text)) {
-            try {
-                showAllOkDanceDialog(text, "");
-                return;
-            } catch (eDance) {
-                stopCropDance();
-            }
-        }
         try {
-            showTabbedReportDialog(text, "");
+            showCropReportDialog(text);
         } catch (eWin) {
             try { alert(text); } catch (eAlert) {}
         }
+    }
+
+    // Всё хорошо — сверху та же строка картинки, под ней «✓ Все ок» и салют.
+    function showCropOk(summary) {
+        stopCropDance();
+        try {
+            showCropOkDialog(summary);
+            return;
+        } catch (eDance) {
+            stopCropDance();
+        }
+        showCropReport(summary + "\n\n" + CROP_OK_TEXT + "\n");
+    }
+
+    // Строка картинки, когда всё в норме: как у Preparator, только без ⚠.
+    function cropImageSummary(name, ppi, required, fileSize) {
+        return name + "\nPPI " + ppi + " (" + required + "), " + formatFileSizeMb(fileSize);
+    }
+
+    // Как dialogBoxMetrics у Preparator, но окно меньше: у кроппера пара строк.
+    function cropDialogMetrics() {
+        var m = dialogBoxMetrics();
+        var boxW = 260;
+        var maxH = 170;
+        var winH = maxH + 80;
+        m.boxW = boxW;
+        m.maxH = maxH;
+        m.winW = boxW + 32;
+        m.winH = winH;
+        m.contentH = winH - 16 - 8 - m.okRowH;
+        m.charsPerLine = Math.max(28, Math.floor(boxW / 7));
+        return m;
+    }
+
+    // showTabbedReportDialog из Preparator, только размеры cropDialogMetrics.
+    function showCropReportDialog(text) {
+        var metrics = cropDialogMetrics();
+        var w = new Window("dialog", CROP_WINDOW_TITLE);
+        w.orientation = "column";
+        w.alignChildren = ["fill", "top"];
+        w.margins = 8;
+        w.spacing = 8;
+
+        addReportTabs(w, text, "", metrics);
+
+        addDialogOkButton(w, metrics);
+
+        applyFixedDialogSize(w, metrics);
+        w.center();
+        w.show();
+    }
+
+    // showAllOkDanceDialog из Preparator: сверху строка картинки, под ней
+    // «✓ Все ок», ниже салют. Размеры cropDialogMetrics.
+    function showCropOkDialog(summary) {
+        stopCropDance();
+
+        var metrics = cropDialogMetrics();
+        var boxW = metrics.boxW;
+        // Строка картинки, одна пустая строка, «✓ Все ок» — одним текстом.
+        var topText = summary + "\n\n" + CROP_OK_TEXT;
+        var topH = Math.max(22, countVisualLines(topText, metrics.charsPerLine) * metrics.lineH);
+        var dancerH = Math.max(60, reportPaneHeight(metrics, false) - topH - 6);
+
+        var fwCols = Math.max(46, Math.floor(boxW / 5));
+        var fwRows = Math.max(8, Math.floor(dancerH / 12));
+        var sim = createFireworksSim(fwCols, fwRows);
+        var fwFrame = "";
+        var fwWarm;
+        for (fwWarm = 0; fwWarm < 2; fwWarm++) fwFrame = sim.step();
+
+        var w = new Window("palette", CROP_WINDOW_TITLE);
+        w.orientation = "column";
+        w.alignChildren = ["fill", "top"];
+        w.margins = 8;
+        w.spacing = 8;
+
+        var pane = w.add("group");
+        pane.orientation = "column";
+        pane.alignChildren = ["fill", "top"];
+        pane.alignment = ["fill", "top"];
+        pane.margins = metrics.paneMargins;
+        pane.spacing = 6;
+
+        var et = pane.add("statictext", undefined, topText, {multiline: true});
+        et.preferredSize = [boxW, topH];
+        et.alignment = ["fill", "top"];
+
+        var dancer = pane.add("statictext", undefined, fwFrame, {multiline: true});
+        dancer.preferredSize = [boxW, dancerH];
+        dancer.alignment = ["fill", "top"];
+        setMonoFont(dancer, 8);
+        try {
+            dancer.graphics.foregroundColor = dancer.graphics.newPen(
+                dancer.graphics.PenType.SOLID_COLOR,
+                [0.72, 0.32, 0.04],
+                1
+            );
+        } catch (eFg) {}
+
+        var okBtn = addDialogOkButton(w, metrics);
+        okBtn.onClick = function () {
+            stopCropDance();
+            w.close();
+        };
+        w.onClose = function () {
+            stopCropDance();
+            return true;
+        };
+
+        var task = app.idleTasks.add({
+            name: "ImageCroperDance",
+            sleep: 1
+        });
+        var fwPaceSet = false;
+        task.addEventListener("onIdle", function () {
+            try {
+                if (!w.visible) {
+                    stopCropDance();
+                    return;
+                }
+                if (!fwPaceSet) {
+                    fwPaceSet = true;
+                    task.sleep = 20;
+                }
+                dancer.text = sim.step();
+            } catch (eTick) {
+                stopCropDance();
+            }
+        });
+
+        applyFixedDialogSize(w, metrics);
+        w.center();
+        w.show();
+        try {
+            dancer.text = sim.step();
+        } catch (eKick) {}
     }
 
     // Та же проверка картинки, что в Preparator (checkImagesOnPage):
@@ -1200,11 +1337,6 @@
 
     // ---- Окно отчёта: скопировано из Preparator 1.109, тест сверяет один в один ----
     // Переименовано: заголовок → CROP_WINDOW_TITLE, stopPrepDance → stopCropDance.
-    function reportIsAllOk(text) {
-        var s = String(text || "");
-        return s.indexOf("\u26a0") === -1 && s.indexOf("\u0412\u0441\u0435 \u043e\u043a") !== -1;
-    }
-
     function countVisualLines(text, charsPerLine) {
         var rawLines = String(text || "").split("\n");
         var visualLines = 0;
@@ -1396,23 +1528,6 @@
         return pane;
     }
 
-    function showTabbedReportDialog(errorsText, logText) {
-        var metrics = dialogBoxMetrics();
-        var w = new Window("dialog", CROP_WINDOW_TITLE);
-        w.orientation = "column";
-        w.alignChildren = ["fill", "top"];
-        w.margins = 8;
-        w.spacing = 8;
-
-        addReportTabs(w, errorsText, logText, metrics);
-
-        addDialogOkButton(w, metrics);
-
-        applyFixedDialogSize(w, metrics);
-        w.center();
-        w.show();
-    }
-
     function stopCropDance() {
         try {
             for (var i = app.idleTasks.length - 1; i >= 0; i--) {
@@ -1596,88 +1711,6 @@
         try {
             control.graphics.font = ScriptUI.newFont("Courier", "REGULAR", size);
         } catch (e2) {}
-    }
-
-    function showAllOkDanceDialog(reportText, logText) {
-        stopCropDance();
-
-        var metrics = dialogBoxMetrics();
-        var boxW = metrics.boxW;
-        var dancerH = Math.max(96, reportPaneHeight(metrics, false) - 28);
-
-        var fwCols = Math.max(46, Math.floor(boxW / 5));
-        var fwRows = Math.max(18, Math.floor(dancerH / 12));
-        var sim = createFireworksSim(fwCols, fwRows);
-        var fwFrame = "";
-        var fwWarm;
-        for (fwWarm = 0; fwWarm < 2; fwWarm++) fwFrame = sim.step();
-
-        var w = new Window("palette", CROP_WINDOW_TITLE);
-        w.orientation = "column";
-        w.alignChildren = ["fill", "top"];
-        w.margins = 8;
-        w.spacing = 8;
-
-        var pane = w.add("group");
-        pane.orientation = "column";
-        pane.alignChildren = ["fill", "top"];
-        pane.alignment = ["fill", "top"];
-        pane.margins = metrics.paneMargins;
-        var okParent = pane;
-
-        var et = okParent.add("statictext", undefined, reportText, {multiline: true});
-        et.preferredSize = [boxW, 22];
-        et.alignment = ["fill", "top"];
-
-        var dancer = okParent.add("statictext", undefined, fwFrame, {multiline: true});
-        dancer.preferredSize = [boxW, dancerH];
-        dancer.alignment = ["fill", "top"];
-        setMonoFont(dancer, 8);
-        try {
-            dancer.graphics.foregroundColor = dancer.graphics.newPen(
-                dancer.graphics.PenType.SOLID_COLOR,
-                [0.72, 0.32, 0.04],
-                1
-            );
-        } catch (eFg) {}
-
-        var okBtn = addDialogOkButton(w, metrics);
-        okBtn.onClick = function () {
-            stopCropDance();
-            w.close();
-        };
-        w.onClose = function () {
-            stopCropDance();
-            return true;
-        };
-
-        var task = app.idleTasks.add({
-            name: "ImageCroperDance",
-            sleep: 1
-        });
-        var fwPaceSet = false;
-        task.addEventListener("onIdle", function () {
-            try {
-                if (!w.visible) {
-                    stopCropDance();
-                    return;
-                }
-                if (!fwPaceSet) {
-                    fwPaceSet = true;
-                    task.sleep = 20;
-                }
-                dancer.text = sim.step();
-            } catch (eTick) {
-                stopCropDance();
-            }
-        });
-
-        applyFixedDialogSize(w, metrics);
-        w.center();
-        w.show();
-        try {
-            dancer.text = sim.step();
-        } catch (eKick) {}
     }
 
     function formatFileSizeMb(mb) {
