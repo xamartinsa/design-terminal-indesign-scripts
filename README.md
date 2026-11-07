@@ -72,9 +72,9 @@ bash ~/Downloads/Update-DT-Scripts.command
 
 Корень:
 
-- Preporator-1.108  
+- Preporator-1.109  
 - Legaler-1.15  
-- Croper-6.5  
+- Croper-6.6  
 - Syncer-1.4  
 - Saver-1.2  
 - Publisher-1.0 (Windows; нужны Python + один раз `login.bat`)

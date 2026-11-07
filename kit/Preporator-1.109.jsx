@@ -1748,8 +1748,22 @@ var hasPPIWarning = false;
 var hasFileSizeWarning = false;
 
 // Определяем необходимый PPI для макета по площади в мм² (не в единицах линейки)
-var pageWidthMm = Math.round(measurementToMm(doc.documentPreferences.pageWidth, doc.viewPreferences.horizontalMeasurementUnits) * 10) / 10;
-var pageHeightMm = Math.round(measurementToMm(doc.documentPreferences.pageHeight, doc.viewPreferences.verticalMeasurementUnits) * 10) / 10;
+// 1.109: размер с первой страницы, а не documentPreferences. После жидкой
+// страницы «масштаб» A1→A0 в настройках документа остаётся A1, и норма была 129 вместо 92.
+function firstPageSizeInRulerUnits(d) {
+    try {
+        if (d.pages.length > 0) {
+            var b = d.pages[0].bounds;
+            var w = Number(b[3]) - Number(b[1]);
+            var h = Number(b[2]) - Number(b[0]);
+            if (w > 0 && h > 0) return { w: w, h: h };
+        }
+    } catch (ePageSize) {}
+    return { w: d.documentPreferences.pageWidth, h: d.documentPreferences.pageHeight };
+}
+var firstPageSize = firstPageSizeInRulerUnits(doc);
+var pageWidthMm = Math.round(measurementToMm(firstPageSize.w, doc.viewPreferences.horizontalMeasurementUnits) * 10) / 10;
+var pageHeightMm = Math.round(measurementToMm(firstPageSize.h, doc.viewPreferences.verticalMeasurementUnits) * 10) / 10;
 var docArea = Math.round(pageWidthMm * pageHeightMm);
 var requiredPPI = isWebPixelDocument ? SCREEN_REQUIRED_PPI : ppiForPageMm(pageWidthMm, pageHeightMm);
 

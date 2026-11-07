@@ -11,6 +11,11 @@
 // запекает именно это окно. Рядом с кропом пишет текстовый лог.
 // 6.5: журнал прогона только во временной папке %TEMP%\DesignTerminal\cropper.log.
 // Рядом с макетом и с картинкой лог не пишет.
+// 6.6: размер в пикселях — по настоящему размеру рамки на развороте, а не во
+// внутренних единицах фрейма. Рамка из A1, увеличенная на 141% (жидкая
+// страница «масштаб»), раньше кропалась под A1 и на A0 давала 91 ppi.
+// Норма ppi — по странице, на которой стоит рамка, а не по размеру документа
+// по умолчанию (там может остаться A1).
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -28,7 +33,7 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.5";
+    var SCRIPT_VERSION = "6.6";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -101,8 +106,9 @@
     try {
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.MILLIMETERS;
         doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.MILLIMETERS;
-        var pageWidthMm = doc.documentPreferences.pageWidth;
-        var pageHeightMm = doc.documentPreferences.pageHeight;
+        var pageSize = framePageSizeMm(frame, doc);
+        var pageWidthMm = pageSize.w;
+        var pageHeightMm = pageSize.h;
         var pageArea = Math.round(pageWidthMm * pageHeightMm);
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.POINTS;
         doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.POINTS;
@@ -131,14 +137,15 @@
             return;
         }
 
-        var targetW = Math.max(1, Math.round(geom.wantWpt / 72 * finalDpi));
-        var targetH = Math.max(1, Math.round(geom.wantHpt / 72 * finalDpi));
+        var targetW = Math.max(1, Math.round(geom.realWpt / 72 * finalDpi));
+        var targetH = Math.max(1, Math.round(geom.realHpt / 72 * finalDpi));
 
         var destFile = new File(
             origFile.path + "/" + origFile.name.replace(/\.[^\.]+$/, "") + "_cropped" + newExt
         );
         logFile = new File(destFile.fsName.replace(/\.[^\.]+$/, "") + ".log");
 
+        logLines.push("pageMm " + round3(pageWidthMm) + "x" + round3(pageHeightMm) + " " + pageSize.source);
         logLines.push("targetDpi " + targetDpi);
         logLines.push("effectivePpi " + Math.round(effective));
         logLines.push("finalDpi " + finalDpi);
@@ -250,6 +257,44 @@
         if (area <= 499554) return 129;
         if (area <= 999949) return 92;
         return 65;
+    }
+
+    // Страница, на которой стоит рамка. documentPreferences — только размер
+    // по умолчанию: после жидкой страницы «масштаб» A1→A0 там остаётся A1.
+    // Единицы на момент вызова — мм.
+    function framePageSizeMm(srcFrame, srcDoc) {
+        var pg = null;
+        var source = "page";
+        try { pg = srcFrame.parentPage; } catch (ePp) {}
+        if (!pg) {
+            source = "firstPage";
+            try {
+                if (srcDoc.pages.length > 0) pg = srcDoc.pages[0];
+            } catch (eFp) {}
+        }
+        if (pg) {
+            try {
+                var b = pg.bounds;
+                var w = Number(b[3]) - Number(b[1]);
+                var h = Number(b[2]) - Number(b[0]);
+                if (w > 0 && h > 0) return { w: w, h: h, source: source };
+            } catch (eB) {}
+        }
+        return {
+            w: Number(srcDoc.documentPreferences.pageWidth),
+            h: Number(srcDoc.documentPreferences.pageHeight),
+            source: "docPrefs"
+        };
+    }
+
+    // Стороны окна кропа в пунктах разворота — с масштабом рамки и её групп.
+    // wantWpt/wantHpt во внутренних единицах фрейма: ими ставим картинку,
+    // а пиксели считаем по этим.
+    function realSidesPt(spreadPts, plan) {
+        return {
+            w: dist2(spreadPts[plan.iA], spreadPts[plan.iB]),
+            h: dist2(spreadPts[plan.iA], spreadPts[plan.sideI])
+        };
     }
 
     function mmToPx(mm, dpi) {
@@ -739,8 +784,14 @@
             if (!(plan.wantWpt > 0.5 && plan.wantHpt > 0.5)) {
                 return { ok: false, error: "Нулевая сторона пути.", log: log };
             }
+            var real = realSidesPt(spreadPts, plan);
+            if (!(real.w > 0.5 && real.h > 0.5)) {
+                return { ok: false, error: "Нулевая сторона рамки на развороте.", log: log };
+            }
             log.push("topEdge " + plan.iA + "->" + plan.iB + " side " + plan.sideI);
             log.push("wantPt " + round3(plan.wantWpt) + "x" + round3(plan.wantHpt));
+            log.push("realPt " + round3(real.w) + "x" + round3(real.h) +
+                " frameScale " + round3(real.w / plan.wantWpt) + "x" + round3(real.h / plan.wantHpt));
             log.push("placeCCW " + round3(plan.placeCCW));
             log.push("psRotate " + round3(plan.psRotateDeg));
             log.push("predCanvas " + round3(plan.predW) + "x" + round3(plan.predH));
@@ -774,6 +825,8 @@
                 placeCCW: plan.placeCCW,
                 wantWpt: plan.wantWpt,
                 wantHpt: plan.wantHpt,
+                realWpt: real.w,
+                realHpt: real.h,
                 topA: frameInner[plan.iA],
                 topB: frameInner[plan.iB],
                 side: frameInner[plan.sideI],
