@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-11-07T13:05:12Z",
+    "updatedAt":  "2026-11-07T13:25:24Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "technicalFolder":  "zzz Technical",
@@ -18,9 +18,9 @@
                   },
                   {
                       "id":  "ImageCroper",
-                      "name":  "Croper-6.6.jsx",
-                      "version":  "6.6",
-                      "sha256":  "b3221d1d60bab79aebf0376a43595af5055789c262f6877de1b632d56ee9aea4"
+                      "name":  "Croper-6.7.jsx",
+                      "version":  "6.7",
+                      "sha256":  "27f1f307dc9b8eecf305adb564e90412e632760c1a5fba6680a7266c0d464c79"
                   },
                   {
                       "id":  "Syncer",

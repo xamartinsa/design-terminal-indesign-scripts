@@ -1,4 +1,5 @@
 ﻿#target "indesign"
+#targetengine "ImageCroperUI"
 
 // ImageCroper 6.3
 // Кроп выбранного image-фрейма через Photoshop (исходные пиксели).
@@ -16,6 +17,10 @@
 // страница «масштаб»), раньше кропалась под A1 и на A0 давала 91 ppi.
 // Норма ppi — по странице, на которой стоит рамка, а не по размеру документа
 // по умолчанию (там может остаться A1).
+// 6.7: окно как у Preparator — тот же размер блока, кнопка OK, салют при успехе.
+// В шапке название скрипта, а не «Все ок». После кропа — строка картинки,
+// как её напишет Preparator (PPI, вес), или «✓ Все ок», если писать нечего.
+// Окно, салют и формат строки скопированы из Preparator 1.109 — тест сверяет.
 //
 // 6.1 ставил пресет Color Settings по имени ("Preserve Embedded Profiles").
 // Пресет часто отсутствует (особенно ru_RU) — Photoshop молча конвертировал
@@ -33,7 +38,8 @@
 // Повёрнутый фрейм мерится через временную копию с углом 0.
 
 (function () {
-    var SCRIPT_VERSION = "6.6";
+    var SCRIPT_VERSION = "6.7";
+    var CROP_WINDOW_TITLE = "Image Cropper";
     var ANGLE_EPS = 0.05;
     var SHEAR_EPS = 0.05;
     var PS_LAUNCH_WAIT_MS = 40000;
@@ -210,8 +216,20 @@
             try { frame.locked = true; } catch (eRelock) {}
         }
 
+        var reportPpi = 0;
+        var reportMb = 0;
+        var reportName = File.decode(destFile.name);
+        try { reportPpi = Math.round(newImg.effectivePpi[0]); } catch (eRp) {}
+        try { reportMb = newImg.itemLink.size / 1048576; } catch (eRs) {
+            try { reportMb = destFile.length / 1048576; } catch (eRl) {}
+        }
+        try { reportName = newImg.itemLink.name; } catch (eRn) {}
+        var cropReport = cropImageReport(reportName, reportPpi, targetDpi, reportMb);
+        logLines.push("report ppi " + reportPpi + " (" + targetDpi + ") " + round3(reportMb) + " MB" +
+            (cropReport ? "" : " ok"));
+
         writeTextLog(logFile, logLines);
-        showMessage("\u0412\u0441\u0435 \u043e\u043a", "");
+        showCropReport(cropReport || "\u2713 \u0412\u0441\u0435 \u043e\u043a\n");
     } catch (e) {
         try {
             logLines.push("ERROR " + String(e.message || e));
@@ -1130,17 +1148,554 @@
             " чтобы PNG был без полосок на прозрачности, а повороты запекались.";
     }
 
+    // Ошибки — в том же окне, что и отчёт. Заголовок окна — название скрипта.
     function showMessage(title, txt) {
-        var w = new Window("dialog", title);
+        var body = String(txt || title || "");
+        showCropReport("⚠ " + body + "\n");
+    }
+
+    function showCropReport(text) {
+        stopCropDance();
+        if (reportIsAllOk(text)) {
+            try {
+                showAllOkDanceDialog(text, "");
+                return;
+            } catch (eDance) {
+                stopCropDance();
+            }
+        }
+        try {
+            showTabbedReportDialog(text, "");
+        } catch (eWin) {
+            try { alert(text); } catch (eAlert) {}
+        }
+    }
+
+    // Та же проверка картинки, что в Preparator (checkImagesOnPage):
+    // ±15% от нормы; «высокий» — только если файл больше 15 МБ; вес — больше 18 МБ.
+    function cropImageReport(name, ppi, required, fileSize) {
+        var tolerance = required * 0.15;
+        var upperLimit = required + tolerance;
+        var lowerLimit = required - tolerance;
+        var ppiBad = false;
+        var ppiKind = "";
+        if (ppi > upperLimit) {
+            if (fileSize > 15) {
+                ppiBad = true;
+                ppiKind = "high";
+            }
+        } else if (ppi < lowerLimit) {
+            ppiBad = true;
+            ppiKind = "low";
+        }
+        if (!ppiKind) {
+            if (ppi > upperLimit) ppiKind = "high";
+            else if (ppi < lowerLimit) ppiKind = "low";
+            else ppiKind = "ok";
+        }
+        var sizeBad = fileSize > 18;
+        if (!ppiBad && !sizeBad) return "";
+        return name + "\n" + formatImagePpiWarning(ppi, required, fileSize, ppiKind, sizeBad) + "\n\n";
+    }
+
+    // ---- Окно отчёта: скопировано из Preparator 1.109, тест сверяет один в один ----
+    // Переименовано: заголовок → CROP_WINDOW_TITLE, stopPrepDance → stopCropDance.
+    function reportIsAllOk(text) {
+        var s = String(text || "");
+        return s.indexOf("\u26a0") === -1 && s.indexOf("\u0412\u0441\u0435 \u043e\u043a") !== -1;
+    }
+
+    function countVisualLines(text, charsPerLine) {
+        var rawLines = String(text || "").split("\n");
+        var visualLines = 0;
+        var c = Math.max(1, charsPerLine || 28);
+        var i, lineLen;
+        for (i = 0; i < rawLines.length; i++) {
+            lineLen = rawLines[i].length;
+            visualLines += lineLen <= 0 ? 1 : Math.max(1, Math.ceil(lineLen / c));
+        }
+        return visualLines;
+    }
+
+    function paginateReportPages(text, maxVisualLines, charsPerLine) {
+        var maxL = Math.max(1, maxVisualLines || 20);
+        var c = Math.max(1, charsPerLine || 28);
+        var rawLines = String(text || "").split("\n");
+        var pages = [];
+        var cur = [];
+        var curVis = 0;
+        var i, lineLen, vis;
+        function flush() {
+            if (cur.length === 0) return;
+            pages.push(cur.join("\n"));
+            cur = [];
+            curVis = 0;
+        }
+        for (i = 0; i < rawLines.length; i++) {
+            lineLen = rawLines[i].length;
+            vis = lineLen <= 0 ? 1 : Math.max(1, Math.ceil(lineLen / c));
+            if (cur.length > 0 && curVis + vis > maxL) {
+                flush();
+            }
+            cur.push(rawLines[i]);
+            curVis += vis;
+            if (curVis >= maxL) {
+                flush();
+            }
+        }
+        flush();
+        if (pages.length === 0) pages.push("");
+        return pages;
+    }
+
+    function dialogOsIsMac() {
+        try {
+            if (typeof File !== "undefined" && File.fs === "Macintosh") return true;
+        } catch (eFs) {}
+        try {
+            return String($.os).indexOf("Mac") >= 0;
+        } catch (eOs) {}
+        return false;
+    }
+
+    function dialogBoxMetrics() {
+        var lineH = 18;
+        var padH = 28;
+        var boxW = 320;
+        var maxH = 360;
+        var okRowH = 32;
+        var winMarginV = 16;
+        var winSpacing = 8;
+        // Aqua tabs are taller; on Mac the strip can sit outside preferredSize.
+        var tabChromeH = dialogOsIsMac() ? 52 : 36;
+        try {
+            if (typeof $.screens !== "undefined" && $.screens && $.screens.length > 0) {
+                var scr = $.screens[0];
+                var scrH = scr.bottom - scr.top;
+                var scrW = scr.right - scr.left;
+                if (scrW > 0) boxW = Math.min(340, Math.max(280, Math.floor(scrW * 0.20)));
+                if (scrH > 0) maxH = Math.min(360, Math.max(320, Math.floor(scrH * 0.34)));
+            }
+        } catch (eScr) {}
+        var winH = maxH + 80;
+        return {
+            lineH: lineH,
+            padH: padH,
+            boxW: boxW,
+            maxH: maxH,
+            winW: boxW + 32,
+            winH: winH,
+            okRowH: okRowH,
+            contentH: winH - winMarginV - winSpacing - okRowH,
+            tabChromeH: tabChromeH,
+            paneMargins: [8, 8, 8, 8],
+            charsPerLine: Math.max(28, Math.floor(boxW / 7))
+        };
+    }
+
+    function tabbedPanelHeight(metrics) {
+        var h = metrics.contentH;
+        if (dialogOsIsMac()) h -= metrics.tabChromeH;
+        return Math.max(120, h);
+    }
+
+    function reportPaneHeight(metrics, hasTabs) {
+        var panePad = 16;
+        if (!hasTabs) return Math.max(80, metrics.contentH - panePad);
+        return Math.max(80, tabbedPanelHeight(metrics) - metrics.tabChromeH - panePad);
+    }
+
+    function applyFixedDialogSize(w, metrics) {
+        w.preferredSize = [metrics.winW, metrics.winH];
+        try {
+            w.minimumSize = [metrics.winW, metrics.winH];
+            w.maximumSize = [metrics.winW, metrics.winH];
+        } catch (eSize) {}
+        try {
+            w.layout.layout(true);
+        } catch (eLay) {}
+    }
+
+    function addDialogOkButton(parent, metrics) {
+        var okRow = parent.add("group");
+        okRow.orientation = "row";
+        okRow.alignment = ["fill", "bottom"];
+        okRow.alignChildren = ["right", "center"];
+        okRow.preferredSize = [metrics.boxW, metrics.okRowH];
+        okRow.minimumSize = [metrics.boxW, metrics.okRowH];
+        try {
+            okRow.maximumSize = [10000, metrics.okRowH];
+        } catch (eMax) {}
+        var okBtn = okRow.add("button", undefined, "OK", {name: "ok"});
+        okBtn.preferredSize = [80, 24];
+        okBtn.minimumSize = [80, 24];
+        return okBtn;
+    }
+
+    function addPagedReportPane(parent, text, metrics, boxH) {
+        var boxW = metrics.boxW;
+        if (boxH == null) boxH = metrics.maxH;
+        var lineH = metrics.lineH;
+        var padH = metrics.padH;
+        var charsPerLine = metrics.charsPerLine;
+        var maxLines = Math.max(4, Math.floor((boxH - padH) / lineH));
+        var pages = paginateReportPages(text, maxLines, charsPerLine);
+        var pageIdx = 0;
+        var textH = boxH;
+        if (pages.length > 1) textH = Math.max(80, boxH - 28);
+
+        var et = parent.add("statictext", undefined, pages[0], {multiline: true});
+        et.preferredSize = [boxW, textH];
+        et.minimumSize = [boxW, textH];
+        et.alignment = ["fill", "top"];
+
+        if (pages.length > 1) {
+            var nav = parent.add("group");
+            nav.alignment = ["fill", "bottom"];
+            nav.orientation = "row";
+            nav.alignChildren = ["center", "center"];
+            var prev = nav.add("button", undefined, "<");
+            prev.preferredSize = [32, 24];
+            var lab = nav.add("statictext", undefined, "1 / " + pages.length);
+            lab.preferredSize = [64, 22];
+            lab.justify = "center";
+            var next = nav.add("button", undefined, ">");
+            next.preferredSize = [32, 24];
+
+            function refreshPage() {
+                et.text = pages[pageIdx];
+                lab.text = (pageIdx + 1) + " / " + pages.length;
+                prev.enabled = pageIdx > 0;
+                next.enabled = pageIdx < pages.length - 1;
+            }
+            prev.onClick = function () {
+                if (pageIdx > 0) {
+                    pageIdx--;
+                    refreshPage();
+                }
+            };
+            next.onClick = function () {
+                if (pageIdx < pages.length - 1) {
+                    pageIdx++;
+                    refreshPage();
+                }
+            };
+            refreshPage();
+        }
+    }
+
+    function addReportTabs(parent, errorsText, logText, metrics) {
+        // 1.99: no Важное/Неважное tabs. Log still goes to persistPrepReport / silent file.
+        var pane = parent.add("group");
+        pane.orientation = "column";
+        pane.alignChildren = ["fill", "top"];
+        pane.alignment = ["fill", "top"];
+        pane.margins = metrics.paneMargins;
+        pane.spacing = 6;
+        addPagedReportPane(pane, errorsText, metrics, reportPaneHeight(metrics, false));
+        return pane;
+    }
+
+    function showTabbedReportDialog(errorsText, logText) {
+        var metrics = dialogBoxMetrics();
+        var w = new Window("dialog", CROP_WINDOW_TITLE);
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
-        var lines = String(txt || "").split("\n");
-        var i;
-        for (i = 0; i < lines.length; i++) {
-            if (!lines[i]) continue;
-            w.add("statictext", undefined, lines[i]);
-        }
-        w.add("button", undefined, "OK", { name: "ok" });
+        w.margins = 8;
+        w.spacing = 8;
+
+        addReportTabs(w, errorsText, logText, metrics);
+
+        addDialogOkButton(w, metrics);
+
+        applyFixedDialogSize(w, metrics);
+        w.center();
         w.show();
+    }
+
+    function stopCropDance() {
+        try {
+            for (var i = app.idleTasks.length - 1; i >= 0; i--) {
+                if (String(app.idleTasks[i].name) === "ImageCroperDance") {
+                    app.idleTasks[i].remove();
+                }
+            }
+        } catch (eStop) {}
+    }
+
+    function fwRnd(a, b) {
+        return a + Math.random() * (b - a);
+    }
+
+    function createFireworksSim(cols, rows) {
+        var rockets = [];
+        var sparks = [];
+        var tick = 0;
+        var cooldown = 0;
+        var launched = 0;
+        var fastFirst = true;
+        var cellN = cols * rows;
+        var cells = [];
+        var prio = [];
+        var dirty = [];
+        var dirtyN = 0;
+        var ci;
+        for (ci = 0; ci < cellN; ci++) {
+            cells[ci] = " ";
+            prio[ci] = 0;
+        }
+
+        function spawnRocket() {
+            var vy = fwRnd(-1.2, -0.92);
+            if (fastFirst) {
+                vy = -3.4;
+                fastFirst = false;
+            }
+            rockets.push({
+                x: fwRnd(5, cols - 6),
+                y: rows - 1,
+                vy: vy,
+                peak: fwRnd(1, Math.max(4, rows * 0.52))
+            });
+        }
+
+        function explode(x, y) {
+            var n = 28 + Math.floor(Math.random() * 10);
+            var i, a, sp;
+            for (i = 0; i < n; i++) {
+                a = (i / n) * Math.PI * 2 + fwRnd(-0.15, 0.15);
+                sp = fwRnd(0.42, 0.95);
+                sparks.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(a) * sp,
+                    vy: Math.sin(a) * sp * 0.82,
+                    life: 16 + Math.floor(fwRnd(0, 10)),
+                    maxLife: 26
+                });
+            }
+            for (i = 0; i < 14; i++) {
+                a = fwRnd(0, Math.PI * 2);
+                sp = fwRnd(0.12, 0.38);
+                sparks.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(a) * sp,
+                    vy: Math.sin(a) * sp * 0.8,
+                    life: 10 + Math.floor(fwRnd(0, 8)),
+                    maxLife: 18
+                });
+            }
+        }
+
+        function clearGrid() {
+            var d, idx;
+            for (d = 0; d < dirtyN; d++) {
+                idx = dirty[d];
+                cells[idx] = " ";
+                prio[idx] = 0;
+            }
+            dirtyN = 0;
+        }
+
+        function plot(x, y, ch, priVal) {
+            var xi = Math.floor(x + 0.5);
+            var yi = Math.floor(y + 0.5);
+            if (xi < 0 || yi < 0 || xi >= cols || yi >= rows) return;
+            var idx = yi * cols + xi;
+            if (priVal >= prio[idx]) {
+                if (prio[idx] === 0) {
+                    dirty[dirtyN] = idx;
+                    dirtyN++;
+                }
+                cells[idx] = ch;
+                prio[idx] = priVal;
+            }
+        }
+
+        function render() {
+            var y, x, row, parts = [];
+            for (y = 0; y < rows; y++) {
+                row = [];
+                var base = y * cols;
+                for (x = 0; x < cols; x++) row[x] = cells[base + x];
+                parts[y] = row.join("");
+            }
+            return parts.join("\n");
+        }
+
+        function step() {
+            var i, r, s, t, ch, priVal;
+            tick++;
+            if (cooldown > 0) cooldown--;
+            if (cooldown <= 0 && rockets.length === 0 && sparks.length < 3) {
+                if (launched >= 5) {
+                    launched = 0;
+                    cooldown = 22;
+                } else {
+                    spawnRocket();
+                    launched++;
+                    cooldown = 18;
+                }
+            }
+
+            for (i = rockets.length - 1; i >= 0; i--) {
+                r = rockets[i];
+                r.y += r.vy;
+                r.vy += 0.004;
+                if (r.y <= r.peak) {
+                    explode(r.x, r.y);
+                    rockets.splice(i, 1);
+                    cooldown = 16;
+                }
+            }
+
+            for (i = sparks.length - 1; i >= 0; i--) {
+                s = sparks[i];
+                s.x += s.vx;
+                s.y += s.vy;
+                s.vy += 0.022;
+                s.vx *= 0.99;
+                s.life--;
+                if (s.life <= 0 || s.y >= rows) sparks.splice(i, 1);
+            }
+
+            clearGrid();
+
+            for (i = 0; i < rockets.length; i++) {
+                r = rockets[i];
+                plot(r.x, r.y, "^", 4);
+                plot(r.x, r.y + 1, "|", 3);
+                plot(r.x, r.y + 2, ":", 2);
+                plot(r.x, r.y + 3, ".", 1);
+            }
+
+            for (i = 0; i < sparks.length; i++) {
+                s = sparks[i];
+                t = s.life / (s.maxLife || 18);
+                ch = ".";
+                priVal = 1;
+                if (t > 0.78) { ch = "@"; priVal = 5; }
+                else if (t > 0.55) { ch = "*"; priVal = 4; }
+                else if (t > 0.35) { ch = "+"; priVal = 3; }
+                else if (t > 0.18) { ch = ":"; priVal = 2; }
+                plot(s.x, s.y, ch, priVal);
+            }
+
+            return render();
+        }
+
+        return { step: step };
+    }
+
+    function setMonoFont(control, size) {
+        try {
+            control.graphics.font = ScriptUI.newFont("Courier New", "REGULAR", size);
+            return;
+        } catch (e1) {}
+        try {
+            control.graphics.font = ScriptUI.newFont("Courier", "REGULAR", size);
+        } catch (e2) {}
+    }
+
+    function showAllOkDanceDialog(reportText, logText) {
+        stopCropDance();
+
+        var metrics = dialogBoxMetrics();
+        var boxW = metrics.boxW;
+        var dancerH = Math.max(96, reportPaneHeight(metrics, false) - 28);
+
+        var fwCols = Math.max(46, Math.floor(boxW / 5));
+        var fwRows = Math.max(18, Math.floor(dancerH / 12));
+        var sim = createFireworksSim(fwCols, fwRows);
+        var fwFrame = "";
+        var fwWarm;
+        for (fwWarm = 0; fwWarm < 2; fwWarm++) fwFrame = sim.step();
+
+        var w = new Window("palette", CROP_WINDOW_TITLE);
+        w.orientation = "column";
+        w.alignChildren = ["fill", "top"];
+        w.margins = 8;
+        w.spacing = 8;
+
+        var pane = w.add("group");
+        pane.orientation = "column";
+        pane.alignChildren = ["fill", "top"];
+        pane.alignment = ["fill", "top"];
+        pane.margins = metrics.paneMargins;
+        var okParent = pane;
+
+        var et = okParent.add("statictext", undefined, reportText, {multiline: true});
+        et.preferredSize = [boxW, 22];
+        et.alignment = ["fill", "top"];
+
+        var dancer = okParent.add("statictext", undefined, fwFrame, {multiline: true});
+        dancer.preferredSize = [boxW, dancerH];
+        dancer.alignment = ["fill", "top"];
+        setMonoFont(dancer, 8);
+        try {
+            dancer.graphics.foregroundColor = dancer.graphics.newPen(
+                dancer.graphics.PenType.SOLID_COLOR,
+                [0.72, 0.32, 0.04],
+                1
+            );
+        } catch (eFg) {}
+
+        var okBtn = addDialogOkButton(w, metrics);
+        okBtn.onClick = function () {
+            stopCropDance();
+            w.close();
+        };
+        w.onClose = function () {
+            stopCropDance();
+            return true;
+        };
+
+        var task = app.idleTasks.add({
+            name: "ImageCroperDance",
+            sleep: 1
+        });
+        var fwPaceSet = false;
+        task.addEventListener("onIdle", function () {
+            try {
+                if (!w.visible) {
+                    stopCropDance();
+                    return;
+                }
+                if (!fwPaceSet) {
+                    fwPaceSet = true;
+                    task.sleep = 20;
+                }
+                dancer.text = sim.step();
+            } catch (eTick) {
+                stopCropDance();
+            }
+        });
+
+        applyFixedDialogSize(w, metrics);
+        w.center();
+        w.show();
+        try {
+            dancer.text = sim.step();
+        } catch (eKick) {}
+    }
+
+    function formatFileSizeMb(mb) {
+        var n = Math.round(Number(mb) * 10) / 10;
+        return String(n).replace(".", ",") + " MB";
+    }
+
+    function formatImagePpiWarning(ppi, required, mb, kind, sizeBad) {
+        var parts = [];
+        if (kind === "high") {
+            parts.push("Высокий PPI " + ppi + " (" + required + ")");
+        } else if (kind === "low") {
+            parts.push("Низкий PPI " + ppi + " (" + required + ")");
+        }
+        if (sizeBad) {
+            parts.push((parts.length ? "большой вес " : "Большой вес ") + formatFileSizeMb(mb));
+        }
+        if (!parts.length) return "";
+        return "⚠ " + parts.join(", ");
     }
 })();
