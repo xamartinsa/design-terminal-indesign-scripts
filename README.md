@@ -76,7 +76,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 - Legaler-1.15  
 - Croper-6.5  
 - Syncer-1.4  
-- Saver-1.1  
+- Saver-1.2  
 - Publisher-1.0 (Windows; нужны Python + один раз `login.bat`)
 
 Папка **zzz Advanced**: AutoFontSizeGrep-2.30, CharacterStylesSetup-1.1, Replacer-1.3, TerminalBelarusPreparator  

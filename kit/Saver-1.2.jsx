@@ -1,10 +1,14 @@
-﻿// SaveAsInddAndIdml-1.1.jsx
+﻿// SaveAsInddAndIdml-1.2.jsx
 // Save .indd и export .idml рядом в той же папке.
 // 1.0: базовый save + export.
 // 1.1: имя без размножения расширения. Было: у документа с именем
 // "leaflet.indd.indd" снимался только один ".indd", и Saver сохранял
 // "leaflet.indd.indd" дальше. Теперь снимаются все хвосты .indd/.idml,
 // и повторный Save не создаёт .indd.indd.
+// 1.2: всё сохранилось — окна нет, Saver молчит. Окно только при ошибке.
+// Было: после каждого Save окно с именами, а имена закодированы как в
+// ссылке ("P588.L1%20BY%20%E2%80%94..."), потому что File.name отдаёт их так.
+// Теперь в окне ошибки имя читается нормально ("P588.L1 BY — ...").
 
 (function () {
     if (app.documents.length === 0) {
@@ -44,6 +48,15 @@
         return base;
     }
 
+    // File.name отдаёт "P588%20BY%20%E2%80%94..." — для человека раскодируем.
+    function readableName(file) {
+        try {
+            return File.decode(file.name);
+        } catch (eDecode) {
+            return String(file.name);
+        }
+    }
+
     var base = baseNameWithoutExt(doc.name);
     if (!base) {
         alert("Не понял имя документа: " + doc.name);
@@ -56,23 +69,16 @@
     try {
         doc.save(inddFile);
     } catch (eSave) {
-        alert("Не сохранился .indd:\n" + eSave);
+        alert("Не сохранился .indd:\n" + readableName(inddFile) + "\n\n" + eSave);
         return;
     }
 
-    var idmlNote = "ok";
     try {
         doc.exportFile(ExportFormat.INDESIGN_MARKUP, idmlFile);
     } catch (eIdml) {
-        idmlNote = "" + eIdml;
+        alert(".indd сохранён, а .idml не вышел:\n" + readableName(idmlFile) + "\n\n" + eIdml);
+        return;
     }
 
-    var lines = [];
-    lines.push(".indd: " + inddFile.name);
-    if (idmlNote === "ok") {
-        lines.push(".idml: " + idmlFile.name);
-    } else {
-        lines.push(".idml не вышел: " + idmlNote);
-    }
-    alert(lines.join("\n"));
+    // Оба файла на месте — молчим.
 })();
