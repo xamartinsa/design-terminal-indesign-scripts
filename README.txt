@@ -1,7 +1,7 @@
 # DT InDesign Scripts
 
 Скрипты для панели **Scripts** в Adobe InDesign.  
-Ставятся в отдельную папку **Design Terminal Git** — ваши остальные скрипты не трогает.
+Ставятся в отдельную папку **Design Terminal Kit** — ваши остальные скрипты не трогает.
 
 ---
 
@@ -25,7 +25,7 @@
 3. **Дважды кликни** по нему.
 4. Если Windows спросит «разрешить этому приложению вносить изменения / открыть» — **Да / Run**.
 5. Подожди, пока в чёрном окне напишет **Done**. Нажми любую клавишу, чтобы закрыть.
-6. Открой (или перезапусти) **InDesign** → панель **Scripts** → папка **Design Terminal Git**.
+6. Открой (или перезапусти) **InDesign** → панель **Scripts** → папка **Design Terminal Kit**.
 
 Админ-права не нужны.
 
@@ -39,7 +39,7 @@
    **Правый клик** (или Control+клик) по файлу → **Open** / **Открыть**.
 4. Если спросит подтверждение — снова **Open**.
 5. Откроется Terminal, дождись **Done**, нажми Enter.
-6. Открой (или перезапусти) **InDesign** → **Scripts** → **Design Terminal Git**.
+6. Открой (или перезапусти) **InDesign** → **Scripts** → **Design Terminal Kit**.
 
 Админ-права не нужны.
 
@@ -91,7 +91,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 |---------|----------------|
 | Mac | `~/Library/Logs/DesignTerminal/update-last.log` |
 | Windows | `%LOCALAPPDATA%\DesignTerminal\update-last.log` |
-| Оба | `Design Terminal Git/zzz Technical/_update-last.log` |
+| Оба | `Design Terminal Kit/zzz Technical/_update-last.log` |
 
 На Mac в Finder: Cmd+Shift+G → вставь путь → Enter.
 
@@ -104,14 +104,14 @@ bash ~/Downloads/Update-DT-Scripts.command
 | **Windows** | **[Update-DT-Scripts.bat](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/raw/main/Update-DT-Scripts.bat?inline=false)** |
 | **Mac** | **[Update-DT-Scripts.command](https://gitlab.com/xamartinsa/design-terminal-indesign-scripts/-/raw/main/Update-DT-Scripts.command?inline=false)** |
 
-- **Windows:** double-click the `.bat` → wait for Done → InDesign Scripts → **Design Terminal Git**.  
+- **Windows:** double-click the `.bat` → wait for Done → InDesign Scripts → **Design Terminal Kit**.  
 - **Mac:** right-click → Open (first time). If macOS says “damaged”, run in Terminal:
 
 ```bash
 xattr -cr ~/Downloads/Update-DT-Scripts.command && chmod +x ~/Downloads/Update-DT-Scripts.command && open ~/Downloads/Update-DT-Scripts.command
 ```
 
-Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Git/zzz Technical/_update-last.log`
+Logs: macOS `~/Library/Logs/DesignTerminal/update-last.log` · Windows `%LOCALAPPDATA%\DesignTerminal\update-last.log` · or `Design Terminal Kit/zzz Technical/_update-last.log`
 
 ---
 

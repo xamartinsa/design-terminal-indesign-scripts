@@ -112,7 +112,7 @@ const m = JSON.parse(readUtf8(manifestPath));
 const lines = [];
 lines.push([
   m.updatedAt || "",
-  m.panelSubdir || "Design Terminal Git",
+  m.panelKitSubdir || m.panelSubdir || "Design Terminal Kit",
   m.technicalFolder || "zzz Technical"
 ].join("\t"));
 for (const f of (m.files || [])) {
@@ -135,7 +135,7 @@ HEADER="$(head -n 1 "$MAP_FILE")"
 UPDATED_AT="$(printf '%s' "$HEADER" | cut -f1)"
 SUBDIR="$(printf '%s' "$HEADER" | cut -f2)"
 TECH_FOLDER="$(printf '%s' "$HEADER" | cut -f3)"
-[[ -n "$SUBDIR" ]] || SUBDIR="Design Terminal Git"
+[[ -n "$SUBDIR" ]] || SUBDIR="Design Terminal Kit"
 [[ -n "$TECH_FOLDER" ]] || TECH_FOLDER="zzz Technical"
 log_line "kitUpdatedAt=$UPDATED_AT"
 log_line "panelSubdir=$SUBDIR"
@@ -277,7 +277,7 @@ for panel in "${TARGETS[@]}"; do
   done
 
   # Старое имя набора рядом с kit.
-  for legacy in "DT Scripts GitHub Auto"; do
+  for legacy in "DT Scripts GitHub Auto" "Design Terminal Git"; do
     if [[ "$legacy" != "$SUBDIR" && "$legacy" != "$TECH_FOLDER" && -d "$panel/$legacy" ]]; then
       rm -rf "$panel/$legacy"
       log_line "Removed stray folder: $legacy"

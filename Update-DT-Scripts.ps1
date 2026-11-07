@@ -96,9 +96,10 @@ try {
   $targets = @($panels | Where-Object { (Get-IndesignVersionFromPath $_.FullName) -eq $maxVer })
   if ($targets.Count -eq 0) { $targets = @($panels | Sort-Object FullName -Descending | Select-Object -First 1) }
 
-  $subdir = if ($m.panelSubdir) { [string]$m.panelSubdir } else { 'Design Terminal Git' }
-  # Старое имя набора рядом с kit.
-  $legacySubdirs = @('DT Scripts GitHub Auto')
+  $subdir = if ($m.panelKitSubdir) { [string]$m.panelKitSubdir } elseif ($m.panelSubdir) { [string]$m.panelSubdir } else { 'Design Terminal Kit' }
+  # Старые имена набора рядом с kit. Папку с прошлым именем (panelSubdir) апдейтер всё равно чистил под манифест.
+  $legacySubdirs = @('DT Scripts GitHub Auto', 'Design Terminal Git')
+  if ($m.panelSubdir) { $legacySubdirs += [string]$m.panelSubdir }
   Add-Note ("kitUpdatedAt={0}" -f $m.updatedAt)
   Add-Note ("panelSubdir={0}" -f $subdir)
   Add-Note ("technicalFolder={0}" -f $techFolder)
