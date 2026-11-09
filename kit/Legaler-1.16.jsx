@@ -1,4 +1,4 @@
-﻿// LegalParagraphSetup-1.15.jsx
+﻿// LegalParagraphSetup-1.16.jsx
 // Selected legal text frame (uniform paragraph style only).
 // Local overrides only (no new paragraph style):
 // - Russian + hyphenation + justification
@@ -14,8 +14,26 @@
 // - spaced hyphen/en-dash " - " / " – " → em dash (not 10–12)
 // - strip a single trailing period at end of frame (also after [...] variables)
 
+// 1.16: при успехе окна нет (было «LegalParagraphSetup … — done»). Окно только при ошибке.
+//       Тихий запуск для агента: app.scriptArgs legalerSilent=1 → никаких окон, итог в
+//       app.scriptArgs legalerResult («ok» или текст ошибки).
 (function () {
-    var SCRIPT_VERSION = "1.15";
+    var SCRIPT_VERSION = "1.16";
+    var SILENT = false;
+    try {
+        app.scriptArgs.setValue("legalerResult", "");
+        if (app.scriptArgs.isDefined("legalerSilent")) {
+            SILENT = String(app.scriptArgs.getValue("legalerSilent")) === "1";
+            app.scriptArgs.setValue("legalerSilent", "");
+        }
+    } catch (eArgs) {}
+    function report(msg) {
+        if (SILENT) {
+            try { app.scriptArgs.setValue("legalerResult", String(msg)); } catch (eRes) {}
+        } else {
+            alert(msg);
+        }
+    }
     var NO_BREAK_CHAR_STYLE_NAME = "No Break";
     var HIDE_CHAR_STYLE_NAME = "Auto/Hide";
 
@@ -73,7 +91,7 @@
         "|\\<[\\l\\u]\\.\\s";
 
     if (app.documents.length === 0) {
-        alert("Open a document first.");
+        report("Open a document first.");
         return;
     }
 
@@ -423,13 +441,13 @@
     }
 
     if (app.selection.length === 0) {
-        alert("Select a legal text frame.");
+        report("Select a legal text frame.");
         return;
     }
 
     var textFrame = resolveTextFrame(app.selection[0]);
     if (!textFrame) {
-        alert("Select a text frame.");
+        report("Select a text frame.");
         return;
     }
 
@@ -444,30 +462,30 @@
             }
             var applied = paragraphs[p].appliedParagraphStyle;
             if (!(applied instanceof ParagraphStyle)) {
-                alert("Mixed / invalid paragraph styles.");
+                report("Mixed / invalid paragraph styles.");
                 return;
             }
             if (sourceStyle === null) {
                 sourceStyle = applied;
             } else if (applied.id !== sourceStyle.id) {
-                alert("Mixed paragraph styles — abort.");
+                report("Mixed paragraph styles — abort.");
                 return;
             }
             targetParagraphs.push(paragraphs[p]);
         }
     } catch (eCheck) {
-        alert("Could not check styles.");
+        report("Could not check styles.");
         return;
     }
 
     if (targetParagraphs.length === 0 || !sourceStyle) {
-        alert("No text in frame.");
+        report("No text in frame.");
         return;
     }
 
     var russianLanguage = findRussianLanguage();
     if (!russianLanguage) {
-        alert("Russian language not found.");
+        report("Russian language not found.");
         return;
     }
 
@@ -516,10 +534,12 @@
         } catch (eLangText) {}
     } catch (eSetup) {
         clearFindChange();
-        alert("Setup failed: " + eSetup.message);
+        report("Setup failed: " + eSetup.message);
         return;
     }
 
     clearFindChange();
-    alert("LegalParagraphSetup " + SCRIPT_VERSION + " — done.");
+    if (SILENT) {
+        try { app.scriptArgs.setValue("legalerResult", "ok"); } catch (eOk) {}
+    }
 })();
