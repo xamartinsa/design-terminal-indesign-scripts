@@ -1742,6 +1742,219 @@ try {
 }
 
 
+// 1.110: вылет картинки. Как в чекере Фигмы (Source Checker): если край картинки
+// стоит на линии обреза (ближе 1 мм), картинка должна уходить за обрез на весь блид
+// документа. Не хватает больше 0,5 мм — ⚠ у этой картинки. Что стоит внутри
+// обреза (поля, логотип) — не проблема. Считаем по прямоугольникам: видимая часть =
+// рамка картинки ∩ все рамки, в которые она вложена. Повёрнутые и не прямоугольные
+// рамки пропускаем: по их габаритам легко принять угол за край.
+var BLEED_TOUCH_TOLERANCE_PT = 1 * 72 / 25.4;
+var BLEED_SHORTFALL_PT = 0.5 * 72 / 25.4;
+var BLEED_SIDE_ORDER = ["top", "bottom", "left", "right"];
+var BLEED_SIDE_LABELS = { top: "сверху", bottom: "снизу", left: "слева", right: "справа" };
+
+// rect, page: [top, left, bottom, right] в pt. outer/bleed: { top, bottom, left, right }.
+// Возвращает стороны, где картинка у обреза, но до блида не дотягивает.
+function bleedShortSides(rect, page, outer, bleed, tolPt, slackPt) {
+    var out = [];
+    var top = Math.max(rect[0], page[0]);
+    var left = Math.max(rect[1], page[1]);
+    var bottom = Math.min(rect[2], page[2]);
+    var right = Math.min(rect[3], page[3]);
+    if (!(bottom - top > 0.01) || !(right - left > 0.01)) return out;
+    var reach = {
+        top: page[0] - rect[0],
+        bottom: rect[2] - page[2],
+        left: page[1] - rect[1],
+        right: rect[3] - page[3]
+    };
+    for (var s = 0; s < BLEED_SIDE_ORDER.length; s++) {
+        var side = BLEED_SIDE_ORDER[s];
+        if (!outer[side]) continue;
+        var need = Number(bleed[side]) || 0;
+        if (!(need > 0)) continue;
+        if (reach[side] < -tolPt) continue;
+        var got = Math.max(0, Math.min(need, reach[side]));
+        if (need - got > slackPt) out.push({ side: side, gotPt: got, needPt: need });
+    }
+    return out;
+}
+
+function formatMmShort(pt) {
+    var mm = Math.round(Number(pt) * 25.4 / 72 * 10) / 10;
+    return String(mm).replace(".", ",");
+}
+
+function formatBleedShortLine(shorts) {
+    var parts = [];
+    var need = 0;
+    for (var i = 0; i < shorts.length; i++) {
+        parts.push(BLEED_SIDE_LABELS[shorts[i].side] + " " + formatMmShort(shorts[i].gotPt) + " мм");
+        if (shorts[i].needPt > need) need = shorts[i].needPt;
+    }
+    return "⚠ Короткий вылет: " + parts.join(", ") + " (нужно " + formatMmShort(need) + ")";
+}
+
+var bleedReachCheckOn = hasBleed && !isWebDocument && !isPixelDocument(doc) &&
+    !layoutSkipsBleedCheck(collectDocNameHaystack(doc));
+var bleedShortByItemId = {};
+var hasBleedShortWarning = false;
+
+function bleedClassName(obj) {
+    try { return obj.constructor.name; } catch (e) {}
+    return "";
+}
+
+function isAxisAligned(obj) {
+    try {
+        var a = Number(obj.rotationAngle) || 0;
+        var r = ((a % 90) + 90) % 90;
+        if (r > 0.05 && r < 89.95) return false;
+        if (Math.abs(Number(obj.shearAngle) || 0) > 0.05) return false;
+    } catch (e) {}
+    return true;
+}
+
+function isPlainRectangleFrame(obj) {
+    if (bleedClassName(obj) !== "Rectangle") return false;
+    if (!isAxisAligned(obj)) return false;
+    try {
+        if (obj.paths.length !== 1) return false;
+        if (obj.paths[0].pathPoints.length !== 4) return false;
+    } catch (e) {}
+    return true;
+}
+
+// Видимая часть: сам объект ∩ все рамки-родители. null — посчитать честно нельзя.
+function bleedVisibleRect(item) {
+    var gb;
+    try { gb = item.geometricBounds; } catch (eGb) { return null; }
+    if (!isAxisAligned(item)) return null;
+    var r = [Number(gb[0]), Number(gb[1]), Number(gb[2]), Number(gb[3])];
+    var cur = item;
+    for (var g = 0; g < 20; g++) {
+        try { cur = cur.parent; } catch (eParent) { return null; }
+        if (!cur) break;
+        var cn = bleedClassName(cur);
+        if (cn === "Spread" || cn === "MasterSpread" || cn === "Page" || cn === "Document") break;
+        if (cn === "Group") continue;
+        if (cn === "Rectangle" || cn === "Oval" || cn === "Polygon" || cn === "GraphicLine" || cn === "TextFrame") {
+            if (cn !== "Rectangle" || !isPlainRectangleFrame(cur)) return null;
+            var pb;
+            try { pb = cur.geometricBounds; } catch (ePb) { return null; }
+            r = [Math.max(r[0], pb[0]), Math.max(r[1], pb[1]), Math.min(r[2], pb[2]), Math.min(r[3], pb[3])];
+            continue;
+        }
+        // Вставка в текст (anchored) и прочее — не наш случай.
+        return null;
+    }
+    if (!(r[2] - r[0] > 0.01) || !(r[3] - r[1] > 0.01)) return null;
+    return r;
+}
+
+function bleedItemPrints(item) {
+    try { if (item.nonprinting) return false; } catch (eNp) {}
+    try { if (item.itemLayer && (!item.itemLayer.visible || !item.itemLayer.printable)) return false; } catch (eLayer) {}
+    try { if (isAnyParentHidden(item)) return false; } catch (eHidden) {}
+    return true;
+}
+
+// Внешние края страницы: у соседней страницы того же разворота блида нет.
+function bleedOuterSides(page) {
+    var outer = { top: true, bottom: true, left: true, right: true };
+    var pb;
+    try { pb = page.bounds; } catch (e) { return outer; }
+    var siblings = [];
+    try { siblings = page.parent.pages; } catch (eSib) {}
+    for (var i = 0; i < siblings.length; i++) {
+        var other = siblings[i];
+        try { if (other.id === page.id) continue; } catch (eId) { continue; }
+        var ob;
+        try { ob = other.bounds; } catch (eOb) { continue; }
+        var vOverlap = Math.min(pb[2], ob[2]) - Math.max(pb[0], ob[0]) > 1;
+        var hOverlap = Math.min(pb[3], ob[3]) - Math.max(pb[1], ob[1]) > 1;
+        if (vOverlap && Math.abs(ob[3] - pb[1]) < 1) outer.left = false;
+        if (vOverlap && Math.abs(ob[1] - pb[3]) < 1) outer.right = false;
+        if (hOverlap && Math.abs(ob[2] - pb[0]) < 1) outer.top = false;
+        if (hOverlap && Math.abs(ob[0] - pb[2]) < 1) outer.bottom = false;
+    }
+    return outer;
+}
+
+function bleedForPage(page) {
+    var dp = doc.documentPreferences;
+    var t = Number(dp.documentBleedTopOffset) || 0;
+    var b = Number(dp.documentBleedBottomOffset) || 0;
+    var ins = Number(dp.documentBleedInsideOrLeftOffset) || 0;
+    var outs = Number(dp.documentBleedOutsideOrRightOffset) || 0;
+    var left = ins;
+    var right = outs;
+    try {
+        if (dp.facingPages && page.side === PageSideOptions.LEFT_HAND) {
+            left = outs;
+            right = ins;
+        }
+    } catch (eSide) {}
+    return { top: t, bottom: b, left: left, right: right };
+}
+
+function checkBleedReachOnPage(page) {
+    var pb;
+    try { pb = page.bounds; } catch (ePb) { return; }
+    var outer = bleedOuterSides(page);
+    var bleed = bleedForPage(page);
+    var items = page.allPageItems;
+    for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        try {
+            if (isFigmaReferenceOverlayItem(item)) continue;
+            var rect = null;
+            var key = "";
+            if (nameLooksLikeLinkVariable(item.name)) {
+                // [pack.hero#link]: картинку подставит ферма и впишет в рамку — смотрим рамку.
+                if (!isPlainRectangleFrame(item)) continue;
+                key = "frame:" + item.id;
+                rect = bleedVisibleRect(item);
+            } else if (item.itemLink) {
+                if (itemIsLinkVariablePlaceholder(item)) continue;
+                key = "item:" + item.id;
+                rect = bleedVisibleRect(item);
+            } else {
+                continue;
+            }
+            if (!rect || !bleedItemPrints(item)) continue;
+            var shorts = bleedShortSides(
+                rect, [Number(pb[0]), Number(pb[1]), Number(pb[2]), Number(pb[3])],
+                outer, bleed, BLEED_TOUCH_TOLERANCE_PT, BLEED_SHORTFALL_PT
+            );
+            if (shorts.length) {
+                bleedShortByItemId[key] = shorts;
+                hasBleedShortWarning = true;
+            }
+        } catch (eItem) {}
+    }
+}
+
+if (bleedReachCheckOn) {
+    var bleedViewPrefs = doc.viewPreferences;
+    var bleedOldH = bleedViewPrefs.horizontalMeasurementUnits;
+    var bleedOldV = bleedViewPrefs.verticalMeasurementUnits;
+    try {
+        bleedViewPrefs.horizontalMeasurementUnits = MeasurementUnits.POINTS;
+        bleedViewPrefs.verticalMeasurementUnits = MeasurementUnits.POINTS;
+        for (var bpi = 0; bpi < doc.pages.length; bpi++) {
+            checkBleedReachOnPage(doc.pages[bpi]);
+        }
+        for (var bmi = 0; bmi < doc.masterSpreads.length; bmi++) {
+            for (var bmp = 0; bmp < doc.masterSpreads[bmi].pages.length; bmp++) {
+                checkBleedReachOnPage(doc.masterSpreads[bmi].pages[bmp]);
+            }
+        }
+    } catch (eBleedReach) {}
+    bleedViewPrefs.horizontalMeasurementUnits = bleedOldH;
+    bleedViewPrefs.verticalMeasurementUnits = bleedOldV;
+}
+
 // 4. Проверка эффективного PPI изображений
 var ppiReport = "";
 var hasPPIWarning = false;
@@ -1794,6 +2007,10 @@ function checkImagesOnPage(page, pageName) {
         
         try {
             if (isFigmaReferenceOverlayItem(item)) continue;
+            var linkFrameBleed = bleedShortByItemId["frame:" + item.id];
+            if (linkFrameBleed && nameLooksLikeLinkVariable(item.name)) {
+                ppiReport += item.name + "\n" + formatBleedShortLine(linkFrameBleed) + "\n\n";
+            }
             if (itemIsLinkVariablePlaceholder(item)) continue;
             // Проверяем есть ли у объекта ссылка
             if (item.itemLink) {
@@ -1833,13 +2050,20 @@ function checkImagesOnPage(page, pageName) {
                 var sizeBad = fileSize > 18;
                 if (sizeBad) hasFileSizeWarning = true;
 
-                if (ppiBad || sizeBad) {
+                var itemBleed = bleedShortByItemId["item:" + item.id];
+                if (ppiBad || sizeBad || itemBleed) {
                     ppiReport += link.name + "\n";
-                    if (hasPpiValue) {
-                        ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize, ppiKind, sizeBad) + "\n\n";
-                    } else {
-                        ppiReport += "⚠ Большой вес " + formatFileSizeMb(fileSize) + "\n\n";
+                    if (ppiBad || sizeBad) {
+                        if (hasPpiValue) {
+                            ppiReport += formatImagePpiWarning(firstPPI, requiredPPI, fileSize, ppiKind, sizeBad) + "\n";
+                        } else {
+                            ppiReport += "⚠ Большой вес " + formatFileSizeMb(fileSize) + "\n";
+                        }
                     }
+                    if (itemBleed) {
+                        ppiReport += formatBleedShortLine(itemBleed) + "\n";
+                    }
+                    ppiReport += "\n";
                 }
             }
         } catch(e) {}
@@ -3606,6 +3830,7 @@ if (comparisonDetails.length > 0) {
 if (
     hasPPIWarning ||
     hasFileSizeWarning ||
+    hasBleedShortWarning ||
     bleedWarning ||
     problematicFontsFound ||
     hasLegalWithoutAutosize ||

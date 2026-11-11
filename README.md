@@ -72,7 +72,7 @@ bash ~/Downloads/Update-DT-Scripts.command
 
 Корень:
 
-- Preporator-1.109  
+- Preporator-1.110  
 - Legaler-1.16  
 - Croper-6.10  
 - Syncer-1.4  
