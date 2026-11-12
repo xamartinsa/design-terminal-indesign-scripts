@@ -2,10 +2,13 @@
 
 (function () {
     var SCRIPT_NAME = "AIToInDesign";
-    var EXPORT_VERSION = "2.3.2";
+    var EXPORT_VERSION = "2.4.0";
+    // Mac: вместо .bat — shell-скрипт, который запускает InDesign (BridgeTalk → doScript AppleScript
+    // "do shell script"): в Illustrator нет способа запустить программу без окна Terminal.
+    var IS_MAC = /mac/i.test(String($.os)) || File.fs == "Macintosh";
 
     // Кит Design Terminal ставит скрипт в панель Scripts InDesign (папка "AI to InDesign",
-    // рядом paste-vectors.ps1 и extract-embedded-psd.py). Клик там → отдаём этот же файл Иллюстратору.
+    // рядом paste-vectors.ps1 / paste-vectors-mac.js и extract-embedded-psd.py). Клик там → отдаём этот же файл Иллюстратору.
     if (!/illustrator/i.test(String(app.name))) {
         var selfPath = "";
         try { selfPath = new File($.fileName).fsName.replace(/\\/g, "/"); } catch (selfPathError) {}
@@ -1415,17 +1418,24 @@
         args.writeln(session.assetsFolder.fsName);
         args.writeln(result.fsName);
         args.close();
-        var bat = new File(session.baseFolder.fsName + "/extract-psd.bat");
-        bat.encoding = "UTF-8";
-        bat.open("w");
-        var pythonCommand = resolvePythonCommand();
-        bat.writeln("@echo off");
-        bat.writeln(pythonCommand + " \"" + pyLocal.fsName + "\" --args \"" + args.fsName + "\"");
-        // Python нет или упал → сразу пустой ответ с ошибкой, а не ожидание 90 секунд.
-        bat.writeln("if not exist \"" + result.fsName + "\" echo {\"images\":[],\"error\":\"python failed or not installed: " + pythonCommand.replace(/["\\]/g, "/") + "\"}> \"" + result.fsName + "\"");
-        bat.close();
-        logSession(session, "Assembling PSD from embedded pixels in " + aiPath + " (python: " + pythonCommand + ")");
-        bat.execute();
+        if (IS_MAC) {
+            if (!startMacEmbeddedExtract(session, pyLocal, args, result)) {
+                return session.embeddedPsdIndex;
+            }
+            logSession(session, "Assembling PSD from embedded pixels in " + aiPath + " (mac, log: extract-psd.log)");
+        } else {
+            var bat = new File(session.baseFolder.fsName + "/extract-psd.bat");
+            bat.encoding = "UTF-8";
+            bat.open("w");
+            var pythonCommand = resolvePythonCommand();
+            bat.writeln("@echo off");
+            bat.writeln(pythonCommand + " \"" + pyLocal.fsName + "\" --args \"" + args.fsName + "\"");
+            // Python нет или упал → сразу пустой ответ с ошибкой, а не ожидание 90 секунд.
+            bat.writeln("if not exist \"" + result.fsName + "\" echo {\"images\":[],\"error\":\"python failed or not installed: " + pythonCommand.replace(/["\\]/g, "/") + "\"}> \"" + result.fsName + "\"");
+            bat.close();
+            logSession(session, "Assembling PSD from embedded pixels in " + aiPath + " (python: " + pythonCommand + ")");
+            bat.execute();
+        }
         var i;
         for (i = 0; i < 180; i++) {
             if (result.exists && result.length > 2) {
@@ -1463,6 +1473,96 @@
             }
         } catch (markerError) {}
         return "python";
+    }
+
+    // ---------- Mac ----------
+    // В Illustrator на Mac нет запуска программы без окна Terminal (File.execute на .command
+    // открывает Terminal и требует бит исполнения). Поэтому shell-скрипт запускает InDesign:
+    // BridgeTalk → app.doScript(AppleScript "do shell script ... &") — в фоне, без окон.
+    function shellQuote(value) {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
+    function appleScriptString(value) {
+        return "\"" + String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"") + "\"";
+    }
+
+    function writeShellScript(file, lines) {
+        file.encoding = "UTF-8";
+        file.lineFeed = "Unix";
+        file.open("w");
+        file.write(lines.join("\n") + "\n");
+        file.close();
+    }
+
+    // Python: путь, который записал апдейтер кита, иначе обычные места установки.
+    // /usr/bin/python3 — только если стоят Command Line Tools: без них он открывает окно установки.
+    function macPythonShellLines() {
+        return [
+            "PY=\"\"",
+            "MARK=\"$HOME/Library/Application Support/DesignTerminal/python-path.txt\"",
+            "[ -f \"$MARK\" ] && PY=\"$(head -n 1 \"$MARK\" | tr -d '\\r')\"",
+            "if [ -z \"$PY\" ] || [ ! -x \"$PY\" ]; then",
+            "  PY=\"\"",
+            "  for c in /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do",
+            "    if [ -x \"$c\" ]; then PY=\"$c\"; break; fi",
+            "  done",
+            "fi",
+            "if [ -z \"$PY\" ] && /usr/bin/xcode-select -p >/dev/null 2>&1; then PY=/usr/bin/python3; fi"
+        ];
+    }
+
+    function startMacEmbeddedExtract(session, pyLocal, args, result) {
+        var sh = new File(session.baseFolder.fsName + "/extract-psd.sh");
+        var log = session.baseFolder.fsName + "/extract-psd.log";
+        var noPython = "{\"images\":[],\"error\":\"python3 not found. Run Update-DT-Scripts.command\"}";
+        var lines = ["#!/bin/bash"].concat(macPythonShellLines()).concat([
+            "echo \"python: $PY\" > " + shellQuote(log),
+            "if [ -z \"$PY\" ]; then printf '%s' " + shellQuote(noPython) + " > " + shellQuote(result.fsName) + "; exit 0; fi",
+            "\"$PY\" " + shellQuote(pyLocal.fsName) + " --args " + shellQuote(args.fsName) + " >> " + shellQuote(log) + " 2>&1",
+            // Python упал → сразу пустой ответ с ошибкой, а не ожидание 90 секунд.
+            "if [ ! -f " + shellQuote(result.fsName) + " ]; then printf '{\"images\":[],\"error\":\"python failed: %s (see extract-psd.log)\"}' \"$PY\" > " + shellQuote(result.fsName) + "; fi"
+        ]);
+        writeShellScript(sh, lines);
+        return runMacShellInBackground(session, sh, "extract");
+    }
+
+    function ensureInDesignForShell(session) {
+        var target = BridgeTalk.getSpecifier("indesign");
+        var running = false;
+        try { running = BridgeTalk.isRunning("indesign"); } catch (runningError) {}
+        if (!target || !running) {
+            logSession(session, "Mac: InDesign is needed to run helper scripts. Launching InDesign.");
+            try { BridgeTalk.launch("indesign"); } catch (launchError) {}
+            waitForBridgeTarget("indesign", session, 120);
+            target = BridgeTalk.getSpecifier("indesign");
+        }
+        return target;
+    }
+
+    function runMacShellInBackground(session, shFile, label) {
+        var target = ensureInDesignForShell(session);
+        if (!target) {
+            logSession(session, "Mac: InDesign not available, cannot start " + label + " (" + shFile.fsName + ")");
+            return false;
+        }
+        var appleScript = "do shell script \"/bin/bash \" & quoted form of " + appleScriptString(shFile.fsName) + " & \" > /dev/null 2>&1 &\"";
+        var state = { completed: false, succeeded: false, body: "" };
+        var bt = new BridgeTalk();
+        bt.target = target;
+        bt.timeout = 120;
+        bt.body = "app.doScript(" + quoteForBridgeTalk(appleScript) + ", ScriptLanguage.APPLESCRIPT_LANGUAGE); \"OK\";";
+        bt.onResult = function (r) { state.completed = true; state.succeeded = true; state.body = r.body; };
+        bt.onError = function (r) { state.completed = true; state.succeeded = false; state.body = r.body; };
+        logSession(session, "Mac: starting " + label + " via InDesign do shell script: " + shFile.fsName);
+        bt.send();
+        var i;
+        for (i = 0; i < 480 && !state.completed; i++) {
+            try { BridgeTalk.pump(); } catch (pumpError) {}
+            $.sleep(250);
+        }
+        logSession(session, "Mac: " + label + " start " + (state.completed ? (state.succeeded ? "OK" : "ERROR " + state.body) : "timed out"));
+        return state.completed && state.succeeded;
     }
 
     function matchEmbeddedPsd(item, images) {
@@ -2729,6 +2829,10 @@
             referenceJpeg: referenceFile ? referenceFile.fsName : ""
         });
 
+        if (IS_MAC) {
+            return startMacPasteQueue(session, queueFile, vectors.length, actionFiles.length);
+        }
+
         var psSource = new File(String(SCRIPT_SOURCE_PATH).replace(/[^\/]+$/, "paste-vectors.ps1"));
         if (!psSource.exists) {
             logSession(session, "paste-vectors.ps1 not found: " + psSource.fsName);
@@ -2746,6 +2850,32 @@
         var started = bat.execute();
         logSession(session, "Clipboard copy started. vectors=" + vectors.length + " laterActions=" + actionFiles.length + " execute=" + started);
         return !!started;
+    }
+
+    // Mac: очередь ведёт paste-vectors-mac.js (JXA). Тексты шагов для Illustrator/InDesign он берёт
+    // из paste-vectors.ps1 (одна копия этого кода на обе системы), поэтому копируем оба файла.
+    function startMacPasteQueue(session, queueFile, vectorCount, actionCount) {
+        var dir = String(SCRIPT_SOURCE_PATH).replace(/[^\/]+$/, "");
+        var names = ["paste-vectors-mac.js", "paste-vectors.ps1"];
+        var n;
+        for (n = 0; n < names.length; n++) {
+            var src = new File(dir + names[n]);
+            if (!src.exists) {
+                logSession(session, names[n] + " not found: " + src.fsName);
+                return false;
+            }
+            src.copy(session.baseFolder.fsName + "/" + names[n]);
+        }
+        var base = session.baseFolder.fsName;
+        var sh = new File(base + "/run-paste.sh");
+        writeShellScript(sh, [
+            "#!/bin/bash",
+            "cd " + shellQuote(base),
+            "/usr/bin/osascript -l JavaScript " + shellQuote(base + "/paste-vectors-mac.js") + " " + shellQuote(queueFile.fsName) + " > " + shellQuote(base + "/paste-osascript.log") + " 2>&1"
+        ]);
+        var started = runMacShellInBackground(session, sh, "paste queue");
+        logSession(session, "Clipboard copy started (mac). vectors=" + vectorCount + " laterActions=" + actionCount + " started=" + started);
+        return started;
     }
 
     function buildTransferDoneMessage(report, counts) {

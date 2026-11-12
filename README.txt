@@ -81,8 +81,9 @@ bash ~/Downloads/Update-DT-Scripts.command
 
 Папка **zzz Advanced**: AutoFontSizeGrep-2.30, CharacterStylesSetup-1.1, Replacer-1.3, TerminalBelarusPreparator  
 
-Папка **AI to InDesign** (только Windows): AIToInDesign — переносит монтажную область из Illustrator в новый документ InDesign.  
-Апдейтер добавляет его и в меню Illustrator: Windows один раз спросит «Разрешить вносить изменения?» — нажми **Да**, перезапусти Illustrator. Дальше: открой .ai → **File → Scripts → AIToInDesign**. Если нажал «Нет» — скрипт всё равно в панели Scripts InDesign (AI to InDesign → AIToInDesign), клик там тоже запускает его в Illustrator. Минуту не трогай мышь и клавиатуру. Для встроенных в .ai картинок нужен Python 3 с numpy — апдейтер поставит его сам, если его нет (для пользователя, без админа).
+Папка **AI to InDesign** (Windows и Mac): AIToInDesign — переносит монтажную область из Illustrator в новый документ InDesign.  
+Апдейтер добавляет его и в меню Illustrator: Windows один раз спросит «Разрешить вносить изменения?» — нажми **Да** (Mac может спросить пароль от компьютера), перезапусти Illustrator. Дальше: открой .ai → **File → Scripts → AIToInDesign**. Если нажал «Нет» — скрипт всё равно в панели Scripts InDesign (AI to InDesign → AIToInDesign), клик там тоже запускает его в Illustrator. Минуту не трогай мышь и клавиатуру. Для встроенных в .ai картинок нужен Python 3 с numpy — апдейтер поставит его сам, если его нет (Windows — для пользователя, без админа; Mac — может спросить пароль).  
+Mac, первый запуск: macOS спросит «Adobe InDesign хочет управлять Adobe Illustrator» — нажми **OK**. Нажал «Не разрешать» — Системные настройки → Конфиденциальность и безопасность → Автоматизация → Adobe InDesign → включи Adobe Illustrator.
 
 Папка **zzz Technical**: лог апдейтера, не скрипт.
 
