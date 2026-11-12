@@ -1,5 +1,5 @@
 {
-    "updatedAt":  "2026-11-11T12:22:12Z",
+    "updatedAt":  "2026-11-12T10:39:20Z",
     "baseUrl":  "https://raw.githubusercontent.com/xamartinsa/design-terminal-indesign-scripts/main",
     "panelSubdir":  "Design Terminal Git",
     "panelKitSubdir":  "Design Terminal Kit",
@@ -69,6 +69,30 @@
                       "version":  "1.0",
                       "sha256":  "7e9141f799d226424a8f08c03f6326e1a5bd27c764f94c538aeaa19b2c87775f",
                       "panelFolder":  "zzz Advanced"
+                  },
+                  {
+                      "id":  "AIToInDesign",
+                      "name":  "AIToInDesign-2.3.1.jsx",
+                      "version":  "2.3.1",
+                      "sha256":  "0169862d23851dcd8a5965dd71728d0b2b67907d78ce55099301ffb41f6d6ac9",
+                      "panelFolder":  "AI to InDesign",
+                      "windowsOnly":  true
+                  },
+                  {
+                      "id":  "AIToInDesign-paste",
+                      "name":  "paste-vectors.ps1",
+                      "version":  "2.3.1",
+                      "sha256":  "e10dd91f39e449f6f58386c4b8122972d85d950ebe4d36e09af8a89a3384d3cc",
+                      "panelFolder":  "AI to InDesign",
+                      "windowsOnly":  true
+                  },
+                  {
+                      "id":  "AIToInDesign-extract",
+                      "name":  "extract-embedded-psd.py",
+                      "version":  "2.3.1",
+                      "sha256":  "e3537419138072a671e9a8ce0b22efd7b5b344f2be892c881224330834d7ff28",
+                      "panelFolder":  "AI to InDesign",
+                      "windowsOnly":  true
                   }
               ]
 }

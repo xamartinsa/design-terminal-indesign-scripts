@@ -81,6 +81,9 @@ bash ~/Downloads/Update-DT-Scripts.command
 
 Папка **zzz Advanced**: AutoFontSizeGrep-2.30, CharacterStylesSetup-1.1, Replacer-1.3, TerminalBelarusPreparator  
 
+Папка **AI to InDesign** (только Windows): AIToInDesign — переносит монтажную область из Illustrator в новый документ InDesign.  
+Открой .ai в Illustrator, затем в InDesign кликни AIToInDesign в панели Scripts — дальше всё идёт в Illustrator. Минуту не трогай мышь и клавиатуру. Для встроенных в .ai картинок нужен Python 3 с numpy.
+
 Папка **zzz Technical**: лог апдейтера, не скрипт.
 
 ## Если апдейтер уже открылся, но упал с ошибкой
