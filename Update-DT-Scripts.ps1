@@ -152,6 +152,59 @@ function Ensure-KitPython($files) {
 }
 #endregion
 
+#region Illustrator menu (File > Scripts): launcher into Program Files, one UAC "Yes"
+function Install-IllustratorMenu($m) {
+  if (-not ($m.PSObject.Properties['illustratorScripts'] -and $m.illustratorScripts)) { return }
+  $adobe = Join-Path $env:ProgramFiles 'Adobe'
+  $scriptDirs = @()
+  foreach ($app in @(Get-ChildItem -LiteralPath $adobe -Directory -Filter 'Adobe Illustrator *' -ErrorAction SilentlyContinue)) {
+    $presets = Join-Path $app.FullName 'Presets'
+    foreach ($loc in @(Get-ChildItem -LiteralPath $presets -Directory -ErrorAction SilentlyContinue)) {
+      $scriptDirs += (Join-Path $loc.FullName 'Scripts')
+    }
+  }
+  if ($scriptDirs.Count -eq 0) { Add-Note 'Illustrator menu: Illustrator not found, skipped'; return }
+
+  $copies = @()
+  foreach ($s in $m.illustratorScripts) {
+    $dl = Join-Path $tmp ([string]$s.name)
+    $uri = New-Object System.Uri(($base + '/kit/' + [string]$s.name))
+    Invoke-WebRequest -Uri $uri -OutFile $dl -UseBasicParsing
+    $hash = (Get-FileHash -LiteralPath $dl -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne ([string]$s.sha256).ToLowerInvariant()) { throw "SHA256 mismatch for $($s.name)" }
+    foreach ($dir in $scriptDirs) {
+      $dest = Join-Path $dir ([string]$s.menuName)
+      if ((Test-Path -LiteralPath $dest) -and ((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $hash)) { continue }
+      $copies += [pscustomobject]@{ Src = $dl; Dest = $dest; Hash = $hash }
+    }
+  }
+  if ($copies.Count -eq 0) { Add-Note 'Illustrator menu: up to date'; return }
+
+  # Program Files пишется только с правами администратора: одно окно Windows "Разрешить?", дальше только при смене запускателя.
+  $lines = @('$ErrorActionPreference = ''Stop''')
+  foreach ($c in $copies) {
+    $d = $c.Dest.Replace("'", "''"); $sp = $c.Src.Replace("'", "''")
+    $lines += "New-Item -ItemType Directory -Force -Path (Split-Path -Parent '$d') | Out-Null"
+    $lines += "Copy-Item -LiteralPath '$sp' -Destination '$d' -Force"
+  }
+  $elev = Join-Path $tmp 'install-illustrator-menu.ps1'
+  [System.IO.File]::WriteAllText($elev, ($lines -join "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+  Add-Note ("Illustrator menu: installing into {0} folder(s). Windows will ask for permission - click Yes." -f $copies.Count)
+  $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$elev`"")
+  $ok = 0
+  foreach ($c in $copies) {
+    if ((Test-Path -LiteralPath $c.Dest) -and ((Get-FileHash -LiteralPath $c.Dest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $c.Hash)) {
+      $ok++
+      Add-Note ("  menu {0}" -f $c.Dest)
+    } else {
+      Add-Note ("  menu FAILED {0}" -f $c.Dest)
+    }
+  }
+  if ($ok -eq 0) { throw "copy failed (exit $($p.ExitCode))" }
+  Add-Note 'Illustrator menu ready: restart Illustrator, then File > Scripts > AIToInDesign.'
+}
+#endregion
+
 function Add-Keep([hashtable]$keep, [string]$folder, [string]$name) {
   if (-not $keep.ContainsKey($folder)) { $keep[$folder] = @{} }
   $keep[$folder][$name] = $true
@@ -301,6 +354,14 @@ try {
   } catch {
     Add-Note ("WARNING python: {0}" -f $_.Exception.Message)
     Add-Note 'AIToInDesign will skip images embedded in .ai until Python 3 + numpy is installed. Run this updater again or send the log.'
+  }
+
+  # Тоже не валит обновление: "Нет" в окне Windows или нет прав → AIToInDesign остаётся в панели InDesign.
+  try {
+    Install-IllustratorMenu $m
+  } catch {
+    Add-Note ("WARNING Illustrator menu: {0}" -f $_.Exception.Message)
+    Add-Note 'AIToInDesign is still in InDesign Scripts panel (Design Terminal Kit > AI to InDesign). Run this updater again and click Yes to add it to Illustrator File > Scripts.'
   }
 
   $status = 'ok'
