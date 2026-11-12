@@ -2,7 +2,7 @@
 
 (function () {
     var SCRIPT_NAME = "AIToInDesign";
-    var EXPORT_VERSION = "2.3.1";
+    var EXPORT_VERSION = "2.3.2";
 
     // Кит Design Terminal ставит скрипт в панель Scripts InDesign (папка "AI to InDesign",
     // рядом paste-vectors.ps1 и extract-embedded-psd.py). Клик там → отдаём этот же файл Иллюстратору.
@@ -1418,10 +1418,13 @@
         var bat = new File(session.baseFolder.fsName + "/extract-psd.bat");
         bat.encoding = "UTF-8";
         bat.open("w");
+        var pythonCommand = resolvePythonCommand();
         bat.writeln("@echo off");
-        bat.writeln("python \"" + pyLocal.fsName + "\" --args \"" + args.fsName + "\"");
+        bat.writeln(pythonCommand + " \"" + pyLocal.fsName + "\" --args \"" + args.fsName + "\"");
+        // Python нет или упал → сразу пустой ответ с ошибкой, а не ожидание 90 секунд.
+        bat.writeln("if not exist \"" + result.fsName + "\" echo {\"images\":[],\"error\":\"python failed or not installed: " + pythonCommand.replace(/["\\]/g, "/") + "\"}> \"" + result.fsName + "\"");
         bat.close();
-        logSession(session, "Assembling PSD from embedded pixels in " + aiPath);
+        logSession(session, "Assembling PSD from embedded pixels in " + aiPath + " (python: " + pythonCommand + ")");
         bat.execute();
         var i;
         for (i = 0; i < 180; i++) {
@@ -1445,6 +1448,21 @@
         }
         logSession(session, "Embedded PSD files: " + session.embeddedPsdIndex.length);
         return session.embeddedPsdIndex;
+    }
+
+    // Апдейтер кита находит Python с numpy (или ставит его) и пишет путь сюда.
+    // Иллюстратор мог быть запущен до установки Python и не видеть его в PATH, поэтому путь, а не "python".
+    function resolvePythonCommand() {
+        try {
+            var marker = new File($.getenv("LOCALAPPDATA") + "/DesignTerminal/python-path.txt");
+            if (marker.exists) {
+                var exePath = String(readTextFile(marker)).replace(/^\s+|\s+$/g, "");
+                if (exePath && new File(exePath).exists) {
+                    return "\"" + exePath + "\"";
+                }
+            }
+        } catch (markerError) {}
+        return "python";
     }
 
     function matchEmbeddedPsd(item, images) {

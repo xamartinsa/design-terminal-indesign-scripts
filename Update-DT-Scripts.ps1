@@ -62,6 +62,96 @@ function Find-PublisherToolDir {
   return $null
 }
 
+#region Python for kit scripts (AIToInDesign: numpy + pillow)
+$PythonInstallerUrl = 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe'
+$PythonPathMarker = Join-Path $logDir 'python-path.txt'
+
+function Invoke-PythonProbe([string]$exe, [string[]]$prefix, [string]$code) {
+  $ErrorActionPreference = 'Continue'
+  try {
+    $out = & $exe @prefix -c $code 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return (($out | Select-Object -Last 1) -as [string]).Trim()
+  } catch { return $null }
+}
+
+function Get-PythonCandidates {
+  $list = New-Object System.Collections.Generic.List[string]
+  $probe = 'import sys;print(sys.executable)'
+  foreach ($c in @(@('python', @()), @('py', @('-3')), @('python3', @()))) {
+    if (-not (Get-Command $c[0] -ErrorAction SilentlyContinue)) { continue }
+    $exe = Invoke-PythonProbe $c[0] $c[1] $probe
+    if ($exe -and ($exe -notmatch '\\WindowsApps\\') -and (Test-Path -LiteralPath $exe)) { $list.Add($exe) }
+  }
+  $globs = @(
+    (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python3*\python.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Python\pythoncore-3*\python.exe'),
+    (Join-Path $env:ProgramFiles 'Python3*\python.exe')
+  )
+  foreach ($g in $globs) {
+    Get-ChildItem -Path $g -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object { $list.Add($_.FullName) }
+  }
+  $seen = @{}
+  $result = @()
+  foreach ($p in $list) {
+    $key = $p.ToLowerInvariant()
+    if ($seen.ContainsKey($key)) { continue }
+    $seen[$key] = $true
+    $result += $p
+  }
+  return $result
+}
+
+function Test-PythonModules([string]$exe, [string[]]$imports) {
+  # Только одинарные кавычки внутри: PowerShell 5.1 съедает двойные в аргументах программы.
+  $code = 'import ' + ($imports -join ',') + ";print('ok')"
+  return ((Invoke-PythonProbe $exe @() $code) -eq 'ok')
+}
+
+function Install-PythonForUser {
+  $installer = Join-Path $tmp 'python-installer.exe'
+  Add-Note "  python: downloading $PythonInstallerUrl"
+  Invoke-WebRequest -Uri $PythonInstallerUrl -OutFile $installer -UseBasicParsing
+  $sig = Get-AuthenticodeSignature -LiteralPath $installer
+  if ($sig.Status -ne 'Valid' -or ([string]$sig.SignerCertificate.Subject) -notmatch 'Python Software Foundation') {
+    throw "python installer signature check failed ($($sig.Status))"
+  }
+  Add-Note '  python: installing for this user (no admin, ~1 min)'
+  $p = Start-Process -FilePath $installer -ArgumentList @('/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_test=0', 'Include_doc=0', 'Include_tcltk=0', 'Shortcuts=0') -Wait -PassThru
+  if ($p.ExitCode -ne 0) { throw "python installer exit code $($p.ExitCode)" }
+}
+
+function Ensure-KitPython($files) {
+  $modules = @()
+  foreach ($f in $files) {
+    if ($f.PSObject.Properties['pythonModules'] -and $f.pythonModules) { $modules += @($f.pythonModules) }
+  }
+  if ($modules.Count -eq 0) { return }
+  $imports = @($modules | ForEach-Object { [string]$_.import } | Select-Object -Unique)
+  $pips = @($modules | ForEach-Object { [string]$_.pip } | Select-Object -Unique)
+  Add-Note ("Python for kit scripts: needs {0}" -f ($pips -join ', '))
+
+  $candidates = @(Get-PythonCandidates)
+  $ready = $candidates | Where-Object { Test-PythonModules $_ $imports } | Select-Object -First 1
+  if (-not $ready) {
+    if ($candidates.Count -eq 0) {
+      Install-PythonForUser
+      $candidates = @(Get-PythonCandidates)
+      if ($candidates.Count -eq 0) { throw 'python installed but not found' }
+    }
+    $exe = $candidates[0]
+    Add-Note "  python: pip install $($pips -join ' ') -> $exe"
+    $ErrorActionPreference = 'Continue'
+    & $exe -m pip install --user --disable-pip-version-check --no-warn-script-location @pips 2>&1 | ForEach-Object { Write-Host "    $_" }
+    $ErrorActionPreference = 'Stop'
+    if (Test-PythonModules $exe $imports) { $ready = $exe } else { throw "pip install $($pips -join ' ') failed" }
+  }
+  New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+  [System.IO.File]::WriteAllText($PythonPathMarker, $ready)
+  Add-Note "  python ok: $ready"
+}
+#endregion
+
 function Add-Keep([hashtable]$keep, [string]$folder, [string]$name) {
   if (-not $keep.ContainsKey($folder)) { $keep[$folder] = @{} }
   $keep[$folder][$name] = $true
@@ -203,6 +293,14 @@ try {
         Add-Note "  KEPT stray subfolder $stray (root has no kit scripts yet)"
       }
     }
+  }
+
+  # Python не валит обновление: скрипты уже стоят, без Python у AIToInDesign не будет только встроенных картинок.
+  try {
+    Ensure-KitPython $m.files
+  } catch {
+    Add-Note ("WARNING python: {0}" -f $_.Exception.Message)
+    Add-Note 'AIToInDesign will skip images embedded in .ai until Python 3 + numpy is installed. Run this updater again or send the log.'
   }
 
   $status = 'ok'
