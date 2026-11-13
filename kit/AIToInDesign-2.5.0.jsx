@@ -2,7 +2,7 @@
 
 (function () {
     var SCRIPT_NAME = "AIToInDesign";
-    var EXPORT_VERSION = "2.4.0";
+    var EXPORT_VERSION = "2.5.0";
     // Mac: вместо .bat — shell-скрипт, который запускает InDesign (BridgeTalk → doScript AppleScript
     // "do shell script"): в Illustrator нет способа запустить программу без окна Terminal.
     var IS_MAC = /mac/i.test(String($.os)) || File.fs == "Macintosh";
@@ -238,6 +238,8 @@
             stats: report
         };
 
+        plainVectorArtboardRect = artboardRect;
+        plainVectorCache = {};
         logIllustratorLayerAudit(doc, artboardRect, session);
         ensureEmbeddedPsdIndex(session, doc);
 
@@ -384,7 +386,7 @@
             return "inside_clipped_vector_group";
         }
         if (item.typename == "GroupItem") {
-            return isClippedVectorGroup(item) ? "ok" : "group_container";
+            return isWholeVectorGroup(item) ? "ok" : "group_container";
         }
         if (item.typename == "PathItem") {
             try {
@@ -410,9 +412,10 @@
         }
 
         // Контейнер группы не экспортируем: дети идут сами. Иначе один PSD внутри запекает всю группу в PNG.
-        // Исключение — группа под маской только из векторов: её копируем целиком вместе с маской.
+        // Исключение — группа под маской только из векторов (копируем вместе с маской) и обычная группа
+        // из простых векторов (одной вставкой, а не по буквам).
         if (item.typename == "GroupItem") {
-            return isClippedVectorGroup(item);
+            return isWholeVectorGroup(item);
         }
 
         if (item.typename == "PathItem" && (item.guides || item.clipping)) {
@@ -470,7 +473,7 @@
                     serializeVectorClipboardItem(item, artboardRect, payload, report, sourcePageItemIndex);
                     break;
                 case "GroupItem":
-                    if (isClippedVectorGroup(item)) {
+                    if (isWholeVectorGroup(item)) {
                         serializeVectorClipboardItem(item, artboardRect, payload, report, sourcePageItemIndex);
                     }
                     break;
@@ -1336,8 +1339,14 @@
             blendMode: blendMode,
             name: safeItemName(item),
             groups: readGroupChain(item, artboardRect, false),
-            fillGradient: readFillGradient(item, artboardRect, report)
+            fillGradient: readFillGradient(item, artboardRect, report),
+            // Группа с живым эффектом: копировать её временную копию без эффекта (см. isPlainVectorGroup).
+            stripEffect: isPlainVectorGroup(item) && hasLiveEffect(item)
         };
+        if (vectorRef.stripEffect) {
+            // По видимым границам с эффектом проверять нечего: эффект не переносится.
+            vectorRef.visibleBounds = vectorRef.bounds;
+        }
 
         payload.vectorItems.push(vectorRef);
         payload.orderedItems.push({
@@ -1915,6 +1924,121 @@
         return true;
     }
 
+    // Обычная группа (без маски) из одних простых векторов — тоже целиком, одной вставкой; в InDesign
+    // приходит группой с теми же контурами. Иначе текст, переведённый в кривые, шёл по букве:
+    // 372 вставки на сторону, минуты ожидания. Простые = контуры и составные контуры (и группы из них),
+    // видимые, не заблокированные, без градиента, своей прозрачности и наложения: такое буфер AICB
+    // растрирует или теряет, а снять его на копию можно только у верхнего объекта. Прозрачность и
+    // наложение самой группы снимаются на копию и ставятся в InDesign, как у одиночного вектора.
+    var plainVectorCache = {};
+    var plainVectorArtboardRect = null;
+    function isPlainVectorGroup(item) {
+        try {
+            if (item.typename != "GroupItem" || item.clipped) {
+                return false;
+            }
+        } catch (typeError) {
+            return false;
+        }
+        var key = "";
+        try { key = String(item.uuid); } catch (uuidError) { key = ""; }
+        if (key && plainVectorCache.hasOwnProperty(key)) {
+            return plainVectorCache[key];
+        }
+        var result = false;
+        try {
+            result = item.pageItems.length > 0 && groupIsPlainVector(item, true);
+        } catch (plainError) {
+            result = false;
+        }
+        if (key) {
+            plainVectorCache[key] = result;
+        }
+        return result;
+    }
+
+    function groupIsPlainVector(group, topLevel) {
+        var i;
+        for (i = 0; i < group.pageItems.length; i++) {
+            var child = group.pageItems[i];
+            var t = child.typename;
+            if (t != "PathItem" && t != "CompoundPathItem" && t != "GroupItem") {
+                return false;
+            }
+            if (child.hidden || child.locked) {
+                return false;
+            }
+            if (safeNumber(child.opacity, 100) < 99.95 || child.blendingMode != BlendModes.NORMAL) {
+                return false;
+            }
+            if (hasLiveEffect(child)) {
+                return false;
+            }
+            if (t == "GroupItem") {
+                if (!groupIsPlainVector(child, false)) {
+                    return false;
+                }
+            } else if (pathHasGradient(child)) {
+                return false;
+            }
+            // Кусок группы целиком за монтажной областью по одному не переносился бы — и целиком не берём.
+            if (topLevel && plainVectorArtboardRect) {
+                var b = getPreferredBounds(child);
+                if (!b || !rectIntersects(b, plainVectorArtboardRect)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // Живой эффект (тень, свечение, размытие) скрипт Иллюстратора не видит, но видимые границы с ним
+    // намного шире геометрических. Ни группу с таким эффектом, ни объекты внутри неё Иллюстратор в буфер
+    // не кладёт: InDesign вставлял прошлый объект («Запишитесь» → «Заашииесь» на Master Classes Card).
+    // Такую группу копируем временной копией без эффекта (stripEffect); эффект и так не переносится.
+    // У объекта внутри группы эффект — группа целиком не идёт.
+    function hasLiveEffect(item) {
+        try {
+            var g = item.geometricBounds;
+            var v = item.visibleBounds;
+            var margin = 10;
+            return (g[0] - v[0]) > margin || (v[2] - g[2]) > margin || (v[1] - g[1]) > margin || (g[3] - v[3]) > margin;
+        } catch (boundsError) {
+            return false;
+        }
+    }
+
+    function pathHasGradient(item) {
+        var paths = [];
+        var i;
+        if (item.typename == "CompoundPathItem") {
+            for (i = 0; i < item.pathItems.length; i++) {
+                paths.push(item.pathItems[i]);
+            }
+        } else {
+            paths.push(item);
+        }
+        for (i = 0; i < paths.length; i++) {
+            var p = paths[i];
+            try {
+                if (p.filled && p.fillColor && p.fillColor.typename == "GradientColor") {
+                    return true;
+                }
+            } catch (fillError) {}
+            try {
+                if (p.stroked && p.strokeColor && p.strokeColor.typename == "GradientColor") {
+                    return true;
+                }
+            } catch (strokeError) {}
+        }
+        return false;
+    }
+
+    // Группа, которая копируется целиком: под маской из векторов или обычная из простых векторов.
+    function isWholeVectorGroup(item) {
+        return isClippedVectorGroup(item) || isPlainVectorGroup(item);
+    }
+
     function insideClippedVectorGroup(item) {
         var parent = null;
         try { parent = item.parent; } catch (parentError) { return false; }
@@ -1926,7 +2050,7 @@
             if (type != "GroupItem") {
                 return false;
             }
-            if (isClippedVectorGroup(parent)) {
+            if (isWholeVectorGroup(parent)) {
                 return true;
             }
             try { parent = parent.parent; } catch (upError) { return false; }
@@ -2744,7 +2868,8 @@
                     blendMode: vectorItem.blendMode,
                     name: vectorItem.name,
                     groups: groupIdList(vectorItem.groups),
-                    opaqueGradient: !!(vectorItem.fillGradient && vectorItem.fillGradient.hasOpacity)
+                    opaqueGradient: !!(vectorItem.fillGradient && vectorItem.fillGradient.hasOpacity),
+                    stripEffect: !!vectorItem.stripEffect
                 });
                 if (vectorItem.fillGradient) {
                     // Сразу после вставки: нативный градиент InDesign вместо потерянной заливки.
@@ -5725,6 +5850,10 @@
             var matrix = [g.xx, g.yx, g.xy, g.yy, 0, 0];
             var frame = null;
             var graphic = null;
+            // Картинка сначала встаёт в размер 1 px = 1 pt и только потом сжимается матрицей: 1111 px — это
+            // 392 мм. На маленьком документе (визитка 90×50) такая рамка не влезает на монтажный стол, и
+            // InDesign отказывает «would leave the pasteboard». На время установки стол расширяется.
+            var pasteboardBefore = widenPasteboard(doc, Math.max(g.width, g.height) * PT);
             try {
                 if (item.clip && item.clip.points && item.clip.points.length > 1) {
                     frame = page.polygons.add();
@@ -5753,8 +5882,10 @@
                 if (frame) {
                     try { frame.remove(); } catch (cleanupError) {}
                 }
+                restorePasteboard(doc, pasteboardBefore);
                 return false;
             }
+            restorePasteboard(doc, pasteboardBefore);
             nameImportedItem(frame, item);
             labelGroups(frame, item);
             applyTransparencySettings(frame, item, report);
@@ -5766,6 +5897,30 @@
                 (det < 0 ? " mirrored" : "") + (item.clip ? " in clip frame" : "") + " source: " + safeGet(item.reason, ""));
             report.importedAssets++;
             return true;
+        }
+
+        // Поля монтажного стола (мм) хотя бы на sizeMm + запас. Возвращает старые поля, если менял.
+        function widenPasteboard(doc, sizeMm) {
+            try {
+                var prefs = doc.pasteboardPreferences;
+                var old = prefs.pasteboardMargins;
+                var need = Math.ceil(sizeMm + 50);
+                if (old[0] >= need && old[1] >= need) {
+                    return null;
+                }
+                prefs.pasteboardMargins = [Math.max(old[0], need), Math.max(old[1], need)];
+                return [old[0], old[1]];
+            } catch (widenError) {
+                appendLog("Pasteboard widen failed: " + widenError.message);
+                return null;
+            }
+        }
+
+        function restorePasteboard(doc, old) {
+            if (!old) {
+                return;
+            }
+            try { doc.pasteboardPreferences.pasteboardMargins = old; } catch (restoreError) {}
         }
 
         function applyPageItemTransform(pageItem, item, report) {
@@ -5998,6 +6153,17 @@
         }
 
         appendLog("Action handler started. action=" + actionName);
+        // Все размеры в шагах — в мм документа, кегль — в пунктах. Так только при «единицы скриптов = авто».
+        // Другой скрипт InDesign может оставить там пункты (живёт до перезапуска InDesign) — тогда всё
+        // читается в пунктах и встаёт в 2,83 раза не туда. Миллиметры ставить нельзя: тогда и кегль в мм.
+        // На время шага ставим «авто» и возвращаем как было.
+        var previousScriptUnit = null;
+        try {
+            previousScriptUnit = app.scriptPreferences.measurementUnit;
+            app.scriptPreferences.measurementUnit = AutoEnum.AUTO_VALUE;
+        } catch (unitError) {
+            previousScriptUnit = null;
+        }
         try {
         var actionPayload = readActionPayload(actionPayloadJSON);
         var report = createReport(actionPayload);
@@ -6103,6 +6269,10 @@
             var actionMessage = actionError && actionError.message ? actionError.message : String(actionError);
             appendLog("Action failed: " + actionName + " :: " + actionMessage);
             return "ERROR " + actionMessage;
+        } finally {
+            if (previousScriptUnit !== null) {
+                try { app.scriptPreferences.measurementUnit = previousScriptUnit; } catch (restoreUnitError) {}
+            }
         }
 
         function pasteClipboardToPage(page, report) {

@@ -161,6 +161,15 @@ $copyScript = @'
         target = item.duplicate();
         try { target.name = "__A2I_COPY__"; } catch (eName) {}
         removeText(target);
+    } else if (req.stripEffect && item.typename == "GroupItem") {
+        // A group with a live effect (shadow, glow) never reaches the clipboard, and InDesign pastes the
+        // previous object. Copy a fresh group with the same children instead: no effect, same vectors.
+        target = item.layer.groupItems.add();
+        try { target.name = "__A2I_COPY__"; } catch (eName2) {}
+        var c;
+        for (c = 0; c < item.pageItems.length; c++) {
+            item.pageItems[c].duplicate(target, ElementPlacement.PLACEATEND);
+        }
     }
 
     function prefBool(key, fallback) {
@@ -325,6 +334,24 @@ $restorePrefsScript = @'
 
 $pasteScript = @'
 (function () {
+    // Sizes below are in the document's mm, which needs "script units = auto". Another InDesign script
+    // may leave points there (it lasts until InDesign restarts): then every check reads points and drops
+    // correct objects as 2.83x too big. Not MILLIMETERS: that would also read stroke weights in mm.
+    var prevUnit = null;
+    try {
+        prevUnit = app.scriptPreferences.measurementUnit;
+        app.scriptPreferences.measurementUnit = AutoEnum.AUTO_VALUE;
+    } catch (eUnit) {
+        prevUnit = null;
+    }
+    try {
+        return pasteInMm();
+    } finally {
+        if (prevUnit !== null) {
+            try { app.scriptPreferences.measurementUnit = prevUnit; } catch (eUnitBack) {}
+        }
+    }
+function pasteInMm() {
     var reqFile = new File("__REQ__");
     reqFile.encoding = "UTF-8";
     reqFile.open("r");
@@ -410,6 +437,24 @@ $pasteScript = @'
             withEffects = true;
         }
     } catch (eVisible) {}
+    // Stale clipboard: Illustrator sometimes does not put the object on the clipboard although the
+    // clipboard changed, and InDesign pastes the previous object again. A size check with a 5 mm margin
+    // misses a previous letter of a similar size ("Zapishites" came out "Zaashiies"). The pasted object is
+    // exactly the size of the previous one and not of this one -> stale: remove and copy again.
+    try {
+        var prev = req.prevBounds;
+        if (prev && prev.width !== undefined && !withEffects) {
+            var sg = item.geometricBounds;
+            var sw = Math.abs(sg[3] - sg[1]);
+            var sh = Math.abs(sg[2] - sg[0]);
+            var offThis = Math.max(Math.abs(sw - b.width), Math.abs(sh - b.height));
+            var offPrev = Math.max(Math.abs(sw - prev.width), Math.abs(sh - prev.height));
+            if (offThis > 0.3 && offPrev < 0.05) {
+                try { item.remove(); } catch (eStaleRemove) {}
+                return "STALE removed size=" + sw + "x" + sh + " expected=" + b.width + "x" + b.height;
+            }
+        }
+    } catch (eStale) {}
     try {
         var current = item.geometricBounds;
         var rotNow = 0;
@@ -498,6 +543,7 @@ $pasteScript = @'
             }
         }
     }
+}
 })();
 '@
 
@@ -571,12 +617,18 @@ try {
     $actions = @($job.actions)
     Write-Log ("vectors=" + $vectors.Count + " actions=" + $actions.Count)
 
+    # Bounds of the last pasted vector: a paste of exactly that size is the previous object again (stale clipboard).
+    $script:PrevBounds = $null
     function Invoke-VectorStep($vector, [int]$index) {
         $pastedThis = $false
-        foreach ($method in @("menu", "api")) {
+        # [method, ms after the copy before InDesign comes to front]. Third try: same copy, longer wait.
+        # (A pause after InDesign comes to front made stale pastes more frequent, 13.11.2026.)
+        foreach ($attempt in @(@("menu", 700), @("api", 700), @("api", 2000))) {
+            $method = $attempt[0]
             $req = [ordered]@{
                 id = [string]$vector.id
                 opaqueGradient = [bool]$vector.opaqueGradient
+                stripEffect = [bool]$vector.stripEffect
                 sourceDocument = [string]$job.sourceDocument
                 sessionId = [string]$job.sessionId
                 sourceUuid = [string]$vector.sourceUuid
@@ -589,6 +641,7 @@ try {
                 name = [string]$vector.name
                 groups = @($vector.groups | Where-Object { $_ })
                 copyMethod = $method
+                prevBounds = $script:PrevBounds
             }
             $utf8 = New-Object System.Text.UTF8Encoding $false
             [System.IO.File]::WriteAllText($reqPath, ($req | ConvertTo-Json -Depth 6), $utf8)
@@ -609,7 +662,7 @@ try {
                 Write-Log "skip paste, copy failed"
                 break
             }
-            Start-Sleep -Milliseconds 700
+            Start-Sleep -Milliseconds ([int]$attempt[1])
             Set-AppForeground "InDesign"
             if (-not (Wait-ClipboardChange $clipSeq 3000)) {
                 Write-Log ("clipboard empty after copy (cleared=" + $cleared + "), skip paste")
@@ -625,6 +678,7 @@ try {
             Write-Log ("paste result " + $pasteResult)
             if ([string]$pasteResult -like "OK*") {
                 $pastedThis = $true
+                $script:PrevBounds = $vector.bounds
                 break
             }
         }

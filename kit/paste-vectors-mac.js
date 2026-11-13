@@ -185,9 +185,13 @@ function run(argv) {
         log("apps connected doc=" + job.sourceDocument);
         log("vectors=" + vectors.length + " actions=" + actions.length);
 
+        // Bounds of the last pasted vector: a paste of exactly that size is the previous object again.
+        var prevBounds = null;
         function vectorStep(vector, index) {
             var pastedThis = false;
-            var methods = ["menu", "api"];
+            // Third try: same copy, longer wait before InDesign takes the clipboard.
+            var methods = ["menu", "api", "api"];
+            var waits = [700, 700, 2000];
             for (var m = 0; m < methods.length; m++) {
                 var method = methods[m];
                 var groups = [];
@@ -197,6 +201,7 @@ function run(argv) {
                 var req = {
                     id: String(vector.id),
                     opaqueGradient: !!vector.opaqueGradient,
+                    stripEffect: !!vector.stripEffect,
                     sourceDocument: String(job.sourceDocument),
                     sessionId: String(job.sessionId),
                     sourceUuid: vector.sourceUuid === undefined || vector.sourceUuid === null ? "" : String(vector.sourceUuid),
@@ -208,7 +213,8 @@ function run(argv) {
                     blendMode: vector.blendMode,
                     name: vector.name === undefined || vector.name === null ? "" : String(vector.name),
                     groups: groups,
-                    copyMethod: method
+                    copyMethod: method,
+                    prevBounds: prevBounds
                 };
                 writeText(reqPath, JSON.stringify(req, null, 2), false);
                 var cleared = clearClipboard();
@@ -227,7 +233,7 @@ function run(argv) {
                     log("skip paste, copy failed");
                     break;
                 }
-                sleepMs(700);
+                sleepMs(waits[m]);
                 activate(INDESIGN_ID, "InDesign");
                 if (!waitClipboardChange(clipCount, 3000)) {
                     log("clipboard empty after copy (cleared=" + cleared + "), skip paste");
@@ -243,6 +249,7 @@ function run(argv) {
                 log("paste result " + pasteResult);
                 if (String(pasteResult).indexOf("OK") === 0) {
                     pastedThis = true;
+                    prevBounds = vector.bounds || null;
                     break;
                 }
             }
